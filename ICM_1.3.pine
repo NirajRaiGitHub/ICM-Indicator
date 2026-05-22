@@ -1,5 +1,5 @@
 //@version=6
-indicator("ICM 1.2", overlay=true,
+indicator("ICM 1.3", overlay=true,
      max_labels_count=500, max_lines_count=500, max_bars_back=5000)
 // ═══════════════════════════════════════════════════════════════════════
 // FX V3 Lite — built on FX V1 Lite (NirajRai May 2026)
@@ -60,6 +60,12 @@ slRefSize =
      slRefSizeInput == "Large"  ? size.large  : size.huge
 ema_sep_min    = input.float(0.08, "Min EMA 13/34 Separation % (Filter Ranging)", minval=0.02, maxval=0.5, step=0.01, group=grp_zone, display=display.none)
 atr_expand_pct = input.float(0.35, "Min Candle/ATR Ratio for Patterns",           minval=0.1, maxval=1.0, step=0.05, group=grp_zone, display=display.none)
+
+grp_liq              = "💧 Micro Liquidity"
+showLiquiditySweep   = input.bool(true, "Show Liquidity Sweeps",   group=grp_liq, display=display.none)
+liqLookback          = input.int(5,     "Sweep Lookback",          minval=3, maxval=15, group=grp_liq, display=display.none)
+liqCooldownBars      = input.int(8,     "Cooldown (bars)",         minval=1, maxval=30, group=grp_liq, display=display.none)
+liqAtrMult           = input.float(0.40,"ATR Expansion Filter",    minval=0.2, maxval=3.0, step=0.05, group=grp_liq, display=display.none)
 
 grp_pd            = "📅 Levels: Previous Day + Pivots"
 showPrevDay       = input.bool(true,  "Show Previous Day (PDH/PDL/PDC)",          group=grp_pd, display=display.none)
@@ -734,6 +740,54 @@ plotshape(scalpShort and not scalpShort[1], title="Scalp Short",
      style=shape.triangledown, location=location.abovebar,
      color=color.new(color.rgb(255,82,82), 0), size=size.tiny,
      text="SS↓", textcolor=color.rgb(255,82,82), display=display.none)
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// H3) MICRO LIQUIDITY SWEEP ENGINE
+// Reuses: ema13 ema34 ema200m atrV adxV _confScore biasIsAvoid inTradeSession
+//         hardBlock isBuyReady isSellReady bodySize
+//         upperWick lowerWick totalRange — zero new security calls
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+float _lqPrevHi = ta.highest(high, liqLookback)[1]
+float _lqPrevLo = ta.lowest(low,   liqLookback)[1]
+
+bool _lqMicroBull = close > ema13 and ema13 > ema34
+bool _lqMicroBear = close < ema13 and ema13 < ema34
+bool _lqBearDisp  = close < open and bodySize > atrV * 0.45
+bool _lqBullDisp  = close > open and bodySize > atrV * 0.45
+bool _lqExpansion = totalRange > atrV * liqAtrMult
+
+// ATR-adaptive cooldown: 3× longer when ADX ranging
+var int _lqLastBar = na
+int _lqCdLen       = adxV < 18 ? liqCooldownBars * 3 : liqCooldownBars
+bool _lqCdOK       = na(_lqLastBar) or (bar_index - _lqLastBar > _lqCdLen)
+
+// ICM gate — light filter: session active + not news/avoid + not dead flat
+// Sweeps are counter-trend (stop hunts) so CONF/CLUSTER/BA don't gate them
+bool _lqGate = inTradeSession and not hardBlock and adxV >= 15
+
+// Buy-side sweep (LQ↓) — trap buyers → bearish
+bool _lqBuySide = showLiquiditySweep and _lqCdOK and _lqGate and
+     _lqMicroBear and
+     high > _lqPrevHi and close < _lqPrevHi and
+     upperWick > totalRange * 0.30 and
+     (_lqBearDisp or close < ema13) and _lqExpansion
+
+// Sell-side sweep (LQ↑) — trap sellers → bullish
+bool _lqSellSide = showLiquiditySweep and _lqCdOK and _lqGate and
+     _lqMicroBull and
+     low < _lqPrevLo and close > _lqPrevLo and
+     lowerWick > totalRange * 0.30 and
+     (_lqBullDisp or close > ema13) and _lqExpansion
+
+if _lqBuySide or _lqSellSide
+    _lqLastBar := bar_index
+
+plotshape(_lqBuySide, title="LQ Sweep Bearish",
+     style=shape.labeldown, location=location.abovebar,
+     color=color.rgb(255,40,40), text="LQ↓", textcolor=color.white, size=size.tiny)
+plotshape(_lqSellSide, title="LQ Sweep Bullish",
+     style=shape.labelup, location=location.belowbar,
+     color=color.rgb(0,220,120), text="LQ↑", textcolor=color.white, size=size.tiny)
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // I) COLORS
@@ -1577,3 +1631,5 @@ alertcondition(_readyStress, "READY Stress", "READY signal under stress on {{tic
 alertcondition(breakoutUp or breakoutDn, "Zone Breakout", "Zone breakout on {{ticker}} at {{close}}")
 alertcondition(_expandUp, "EMA Expand UP", "EMAs expanding bullish on {{ticker}}")
 alertcondition(_expandDn, "EMA Expand DN", "EMAs expanding bearish on {{ticker}}")
+alertcondition(_lqBuySide,  "LQ Sweep Bearish", "Bearish liquidity sweep on {{ticker}} at {{close}}")
+alertcondition(_lqSellSide, "LQ Sweep Bullish", "Bullish liquidity sweep on {{ticker}} at {{close}}")
