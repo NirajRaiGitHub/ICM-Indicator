@@ -1,0 +1,424 @@
+//@version=5
+indicator("🌍 Gold Macro V1.2", overlay=true, max_labels_count=200, max_lines_count=200)
+// ─────────────────────────────────────────────────────────────────────────────
+// UNIVERSAL GOLD MACRO COMPANION — NirajRai May 2026
+// V1.2: Added ATR status column to top table
+//       ATR displayed as % of price (works for DXY, US10Y, SP500, VIX, Gold)
+//
+// ATR % Thresholds (universal across all instruments):
+//   < 0.05%  = 🔵 LOW    — market sleeping, wait
+//   0.05–0.15% = 🟢 NORMAL — good to trade
+//   0.15–0.30% = 🟡 HIGH   — big moves, widen SL
+//   > 0.30%  = 🔴 SPIKE  — news/event, avoid or tiny size
+// ─────────────────────────────────────────────────────────────────────────────
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 0) INPUTS
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+grp_ema   = "📈 EMAs + VWAP"
+show_e9   = input.bool(true,  "EMA 9   (green)",    group=grp_ema)
+show_e21  = input.bool(true,  "EMA 21  (purple)",   group=grp_ema)
+show_e51  = input.bool(true,  "EMA 51  (blue)",     group=grp_ema)
+show_e200 = input.bool(true,  "EMA 200 (red dash)", group=grp_ema)
+showVWAP  = input.bool(true,  "VWAP (white)",       group=grp_ema)
+show_e13  = input.bool(false, "EMA 13  (optional)", group=grp_ema)
+show_e34  = input.bool(false, "EMA 34  (optional)", group=grp_ema)
+lineW     = input.int(2, "Line Width", minval=1, maxval=4, group=grp_ema)
+
+grp_pin       = "📌 Pin Bar"
+showPins      = input.bool(true,  "Show Pin Bar Signals",              group=grp_pin)
+pinWickMult   = input.float(2.5,  "Wick ÷ Body Ratio",  minval=1.2, maxval=5.0, step=0.2, group=grp_pin)
+pinMaxBody    = input.float(0.28, "Max Body ÷ Range",    minval=0.1, maxval=0.6, step=0.05, group=grp_pin)
+pinInsidePrev = input.bool(true,  "Body Inside Prev Candle",           group=grp_pin)
+pinMinATRfrac = input.float(0.6,  "Min Pin Size (× ATR)", minval=0.2, maxval=2.0, step=0.1, group=grp_pin)
+pinCooldown   = input.int(8,      "Min Bars Between Signals", minval=1, maxval=30, group=grp_pin)
+pinTrendAlign = input.bool(true,  "Trend Alignment Filter",            group=grp_pin)
+pinRsiFilter  = input.bool(true,  "RSI Filter (bull<45 / bear>55)",    group=grp_pin)
+showPinLabels = input.bool(false, "Show Pin Labels (can be noisy)",    group=grp_pin)
+
+grp_rsi   = "🎯 RSI"
+rsiLen    = input.int(14, "RSI Length",  group=grp_rsi)
+rsiOB     = input.int(70, "Overbought",  group=grp_rsi)
+rsiOS     = input.int(30, "Oversold",    group=grp_rsi)
+
+grp_htf   = "🔭 HTF"
+htfTf     = input.timeframe("60", "HTF Timeframe", group=grp_htf)
+
+grp_sess      = "🕐 Session"
+string tz     = "GMT+5:30"
+showSessionBg = input.bool(false, "Show Session Background", group=grp_sess)
+
+grp_vol   = "📊 Volume"
+volFilter = input.bool(true,  "Volume Filter for Pins", group=grp_vol)
+volMaLen  = input.int(20,     "Volume MA Length",        group=grp_vol)
+volMult   = input.float(1.2,  "Min Volume × MA", minval=1.0, step=0.1, group=grp_vol)
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// A) AUTO-DETECT INSTRUMENT
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+string symU = str.upper(syminfo.ticker)
+bool isDXY  = str.contains(symU, "DXY")
+bool isVIX  = str.contains(symU, "VIX")
+bool is10Y  = str.contains(symU, "US10Y") or str.contains(symU, "TNX") or str.contains(symU, "10Y")
+bool isSPX  = str.contains(symU, "SPX") or str.contains(symU, "SP500") or str.contains(symU, "SPY") or str.contains(symU, "ES1")
+bool isPositive = isVIX
+bool isInverse  = not isPositive
+string instrName = isDXY ? "DXY" : isVIX ? "VIX" : is10Y ? "US10Y" : isSPX ? "SP500" : syminfo.ticker
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// B) CORE INDICATORS
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+float ema9    = ta.ema(close, 9)
+float ema13   = ta.ema(close, 13)
+float ema21   = ta.ema(close, 21)
+float ema34   = ta.ema(close, 34)
+float ema51   = ta.ema(close, 51)
+float ema200  = ta.ema(close, 200)
+
+float vwapLine = ta.vwap(close)
+float atrV     = ta.atr(14)
+float atrPct   = close > 0 ? atrV / close * 100 : 0.0
+float rsi      = ta.rsi(close, rsiLen)
+float volMA    = ta.sma(nz(volume, 1), volMaLen)
+float volRatio = volMA > 0 ? nz(volume, 1) / volMA : 1.0
+float dayChg   = (close - open) / open * 100
+bool  hasVol   = not na(volume) and volume > 0
+
+// Trend
+bool trendBull = ema9 > ema21 and ema21 > ema200
+bool trendBear = ema9 < ema21 and ema21 < ema200
+string trendTxt = trendBull ? "RISING" : trendBear ? "FALLING" : "CHOP"
+
+bool compressed = math.abs(ema9 - ema21) / close * 100 < 0.5
+int  transp     = compressed ? 60 : 0
+
+float distPct = math.abs(close - ema9) / close * 100
+string pullTxt = distPct > 0.6 ? "EXTENDED" : distPct < 0.15 ? "AT EMA" : "HEALTHY"
+
+// HTF
+float htfE9   = request.security(syminfo.tickerid, htfTf, ta.ema(close, 9),   lookahead=barmerge.lookahead_off)
+float htfE21  = request.security(syminfo.tickerid, htfTf, ta.ema(close, 21),  lookahead=barmerge.lookahead_off)
+float htfE200 = request.security(syminfo.tickerid, htfTf, ta.ema(close, 200), lookahead=barmerge.lookahead_off)
+bool htfBull  = htfE9 > htfE21 and htfE21 > htfE200
+bool htfBear  = htfE9 < htfE21 and htfE21 < htfE200
+string htfTxt = htfBull ? "HTF UP" : htfBear ? "HTF DN" : "HTF RNG"
+
+// MTF RSI bias
+float rsi5  = request.security(syminfo.tickerid, "5",   ta.rsi(close, rsiLen), lookahead=barmerge.lookahead_off)
+float rsi15 = request.security(syminfo.tickerid, "15",  ta.rsi(close, rsiLen), lookahead=barmerge.lookahead_off)
+float rsi1h = request.security(syminfo.tickerid, "60",  ta.rsi(close, rsiLen), lookahead=barmerge.lookahead_off)
+float rsi4h = request.security(syminfo.tickerid, "240", ta.rsi(close, rsiLen), lookahead=barmerge.lookahead_off)
+int biasScore = (rsi5 > 50 ? 1 : 0) + (rsi15 > 50 ? 1 : 0) + (rsi1h > 50 ? 1 : 0) + (rsi4h > 50 ? 1 : 0)
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ATR STATUS (universal — works for any instrument)
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+string atrStatusTxt =
+     atrPct > 0.30 ? "🔴 SPIKE"  :
+     atrPct > 0.15 ? "🟡 HIGH"   :
+     atrPct > 0.05 ? "🟢 NORMAL" : "🔵 LOW"
+
+color atrStatusCol =
+     atrPct > 0.30 ? color.rgb(255, 80,  80)  :
+     atrPct > 0.15 ? color.rgb(255, 180, 50)  :
+     atrPct > 0.05 ? color.rgb(80,  220, 120) :
+                     color.rgb(100, 180, 255)
+
+color atrStatusBg =
+     atrPct > 0.30 ? color.rgb(80,  10,  10) :
+     atrPct > 0.15 ? color.rgb(70,  45,  0)  :
+     atrPct > 0.05 ? color.rgb(0,   60,  20) :
+                     color.rgb(10,  30,  65)
+
+string atrCellTxt = str.tostring(atrV, "#.###") + "\n" + atrStatusTxt
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// C) GOLD IMPACT
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+string goldImpact = na
+bool goldBullish  = false
+bool goldBearish  = false
+
+if isPositive
+    goldBullish := trendBull
+    goldBearish := trendBear
+    goldImpact  := trendBull ? "↑ GOLD BULLISH" : trendBear ? "↓ GOLD BEARISH" : "→ NEUTRAL"
+else
+    goldBullish := trendBear
+    goldBearish := trendBull
+    goldImpact  := trendBull ? "↓ GOLD BEARISH" : trendBear ? "↑ GOLD BULLISH" : "→ NEUTRAL"
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// D) SESSIONS
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+bool isLondon = not na(time(timeframe.period, "1330-1730:1234567", tz))
+bool isNY     = not na(time(timeframe.period, "1830-2200:1234567", tz))
+bool isIndia  = not na(time(timeframe.period, "0930-1130:1234567", tz))
+bool isActive = isLondon or isNY or isIndia
+bool isAvoid  = not na(time(timeframe.period, "1200-1330:1234567", tz))
+string sessTxt = isNY ? "NY" : isLondon ? "LDN" : isIndia ? "IND" : isAvoid ? "DEAD" : "OFF"
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// E) PIN BAR DETECTION
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+float candleRange = high - low
+float bodyTop     = math.max(open, close)
+float bodyBot     = math.min(open, close)
+float bodySize    = math.max(bodyTop - bodyBot, syminfo.mintick)
+float upperWick   = high - bodyTop
+float lowerWick   = bodyBot - low
+
+bool sizeOK     = candleRange >= atrV * pinMinATRfrac
+bool bodyOK     = bodySize <= candleRange * pinMaxBody
+bool bullWickOK = lowerWick >= bodySize * pinWickMult and lowerWick > upperWick
+bool bearWickOK = upperWick >= bodySize * pinWickMult and upperWick > lowerWick
+bool insidePrev = not pinInsidePrev or (bodyTop <= high[1] and bodyBot >= low[1])
+bool bullClose  = close >= (low  + candleRange * 0.55)
+bool bearClose  = close <= (high - candleRange * 0.55)
+
+bool isBullPin = sizeOK and bodyOK and bullWickOK and insidePrev and bullClose
+bool isBearPin = sizeOK and bodyOK and bearWickOK and insidePrev and bearClose
+
+bool volOK = not volFilter or not hasVol or volRatio >= volMult
+
+var int _lastPinBar = -99
+int _barsSince = bar_index - _lastPinBar
+bool cooldownOK = _barsSince >= pinCooldown
+
+bool trendAlignBull = not pinTrendAlign or (isInverse ? trendBull : trendBear)
+bool trendAlignBear = not pinTrendAlign or (isInverse ? trendBear : trendBull)
+bool rsiBullOK = not pinRsiFilter or rsi < 45
+bool rsiBearOK = not pinRsiFilter or rsi > 55
+
+bool bullPinSignal = showPins and isBullPin and volOK and cooldownOK and trendAlignBull and rsiBullOK and not isAvoid
+bool bearPinSignal = showPins and isBearPin and volOK and cooldownOK and trendAlignBear and rsiBearOK and not isAvoid
+
+if bullPinSignal or bearPinSignal
+    _lastPinBar := bar_index
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// F) COLOURS
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+color C_GOLD_GOOD = color.rgb(60, 200, 120)
+color C_GOLD_BAD  = color.rgb(220, 60, 60)
+color C_NEU       = color.rgb(70, 70, 90)
+color C_GOLD      = color.rgb(255, 215, 0)
+color C_WHITE     = color.white
+color C_BG        = color.rgb(14, 14, 22)
+
+color trendUpCol  = isPositive ? C_GOLD_GOOD : C_GOLD_BAD
+color trendDnCol  = isPositive ? C_GOLD_BAD  : C_GOLD_GOOD
+color cellUp      = isPositive ? color.rgb(0, 55, 20) : color.rgb(60, 10, 10)
+color cellDn      = isPositive ? color.rgb(60, 10, 10) : color.rgb(0, 55, 20)
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// G) EMA + VWAP PLOTS
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+plot(show_e9   ? ema9   : na, "EMA 9",   color=color.new(color.rgb(0, 230, 80),   transp), linewidth=lineW,     style=plot.style_line)
+plot(show_e13  ? ema13  : na, "EMA 13",  color=color.new(color.rgb(100, 255, 100),transp), linewidth=lineW,     style=plot.style_line)
+plot(show_e21  ? ema21  : na, "EMA 21",  color=color.new(color.rgb(180, 60, 255), transp), linewidth=lineW,     style=plot.style_line)
+plot(show_e34  ? ema34  : na, "EMA 34",  color=color.new(color.rgb(255, 60, 180), transp), linewidth=lineW,     style=plot.style_line)
+plot(show_e51  ? ema51  : na, "EMA 51",  color=color.new(color.rgb(40, 130, 255), transp), linewidth=lineW + 1, style=plot.style_line)
+plot(show_e200 and bar_index % 2 == 0 ? ema200 : na, "EMA 200",
+     color=color.new(color.rgb(255, 40, 40), 0), linewidth=lineW + 1, style=plot.style_linebr)
+plot(showVWAP and hasVol ? vwapLine : na, "VWAP",
+     color=color.new(color.white, 10), linewidth=lineW, style=plot.style_linebr)
+
+plotshape(bullPinSignal, "Bull Pin", shape.triangleup,   location.belowbar, color=color.new(color.lime, 0), size=size.small)
+plotshape(bearPinSignal, "Bear Pin", shape.triangledown,  location.abovebar, color=color.new(color.red,  0), size=size.small)
+barcolor(bullPinSignal ? color.new(color.lime, 55) : bearPinSignal ? color.new(color.red, 55) : na)
+
+if showPinLabels and bullPinSignal
+    string goldTxt = isPositive ? "GOLD ↑" : "GOLD ↓"
+    color  lblCol  = isPositive ? color.new(color.lime, 30) : color.new(color.red, 30)
+    label.new(bar_index, low - atrV * 0.3, instrName + "\n" + goldTxt,
+         color=lblCol, textcolor=color.white, style=label.style_label_up, size=size.tiny)
+
+if showPinLabels and bearPinSignal
+    string goldTxt = isPositive ? "GOLD ↓" : "GOLD ↑"
+    color  lblCol  = isPositive ? color.new(color.red, 30) : color.new(color.lime, 30)
+    label.new(bar_index, high + atrV * 0.3, instrName + "\n" + goldTxt,
+         color=lblCol, textcolor=color.white, style=label.style_label_down, size=size.tiny)
+
+color sessColor =
+     isNY     ? color.new(color.rgb(70, 130, 255), 93) :
+     isLondon ? color.new(color.rgb(255, 200, 60), 94) :
+     isIndia  ? color.new(color.rgb(60, 200, 120), 95) :
+     isAvoid  ? color.new(color.gray, 95) : na
+bgcolor(showSessionBg ? sessColor : na)
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// G2) WAIT ZONE BAND
+// Price inside range = market undecided = WAIT (gray)
+// Price breaks UP    = confirmed direction (bearish/bullish for gold)
+// Price breaks DOWN  = confirmed direction (bullish/bearish for gold)
+// Works on DXY, US10Y, VIX, SP500 — auto-adapts gold impact direction
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+grp_wz       = "⏳ Wait Zone"
+showWaitZone = input.bool(true,  "Show Wait Zone Band",        group=grp_wz)
+wzLookback   = input.int(50,     "Lookback Bars (range size)", group=grp_wz, minval=10, maxval=200)
+wzBuffer     = input.float(0.5,  "ATR Buffer Multiplier",      group=grp_wz, minval=0.1, maxval=3.0, step=0.1)
+
+// Range band calculation
+float wz_high   = ta.highest(high, wzLookback)
+float wz_low    = ta.lowest(low,   wzLookback)
+float wz_buffer = atrV * wzBuffer
+float wz_upper  = wz_high + wz_buffer
+float wz_lower  = wz_low  - wz_buffer
+float wz_mid    = (wz_upper + wz_lower) / 2.0
+
+// Status
+bool wzBreakUp = close > wz_upper
+bool wzBreakDn = close < wz_lower
+bool wzInRange = not wzBreakUp and not wzBreakDn
+
+// Gold signal from break direction
+string wzGoldSignal =
+     wzInRange ? "⏳ WAIT — range" :
+     wzBreakUp ? (isPositive ? "🟢 GOLD BULL" : "🔴 GOLD BEAR") :
+                 (isPositive ? "🔴 GOLD BEAR" : "🟢 GOLD BULL")
+
+color wzSignalBg =
+     wzInRange ? color.new(color.gray, 20) :
+     wzBreakUp ? (isPositive ? color.new(color.green, 20) : color.new(color.red, 20)) :
+                 (isPositive ? color.new(color.red,   20) : color.new(color.green, 20))
+
+color wzSignalTx =
+     wzInRange ? color.rgb(160,165,200) :
+     wzBreakUp ? (isPositive ? color.rgb(80,240,130) : color.rgb(245,90,90)) :
+                 (isPositive ? color.rgb(245,90,90)  : color.rgb(80,240,130))
+
+// Background tint on chart
+bgcolor(showWaitZone ?
+     (wzInRange ? color.new(color.gray, 94) :
+      wzBreakUp ? (isPositive ? color.new(color.green,93) : color.new(color.red,92)) :
+                  (isPositive ? color.new(color.red,92)   : color.new(color.green,93))) : na)
+
+// Band lines + labels
+var line  wz_up_line  = na
+var line  wz_dn_line  = na
+var line  wz_mid_line = na
+var label wz_up_lbl   = na
+var label wz_dn_lbl   = na
+var label wz_sig_lbl  = na
+
+if barstate.islast and showWaitZone
+    line.delete(wz_up_line)
+    line.delete(wz_dn_line)
+    line.delete(wz_mid_line)
+    label.delete(wz_up_lbl)
+    label.delete(wz_dn_lbl)
+    label.delete(wz_sig_lbl)
+
+    int x1 = bar_index - wzLookback
+    int x2 = bar_index + 10
+
+    color _upLineCol = wzInRange ? color.new(color.gray,45) : color.new(color.red,25)
+    color _dnLineCol = wzInRange ? color.new(color.gray,45) : color.new(color.green,25)
+
+    wz_up_line  := line.new(x1, wz_upper, x2, wz_upper,
+         color=_upLineCol, width=2, style=line.style_dashed)
+    wz_dn_line  := line.new(x1, wz_lower, x2, wz_lower,
+         color=_dnLineCol, width=2, style=line.style_dashed)
+    wz_mid_line := line.new(x1, wz_mid,   x2, wz_mid,
+         color=color.new(color.gray,70), width=1, style=line.style_dotted)
+
+    int _rnd = syminfo.mintick <= 0.001 ? 3 : 2
+    wz_up_lbl := label.new(x2, wz_upper,
+         "RESIST " + str.tostring(math.round(wz_upper, _rnd)),
+         style=label.style_label_left,
+         color=color.new(color.gray,35),
+         textcolor=color.rgb(200,155,155), size=size.small)
+    wz_dn_lbl := label.new(x2, wz_lower,
+         "SUPPRT " + str.tostring(math.round(wz_lower, _rnd)),
+         style=label.style_label_left,
+         color=color.new(color.gray,35),
+         textcolor=color.rgb(155,200,155), size=size.small)
+    wz_sig_lbl := label.new(x2, wz_mid, wzGoldSignal,
+         style=label.style_label_left,
+         color=wzSignalBg, textcolor=wzSignalTx, size=size.normal)
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// H) TOP TABLE — 8 columns (added ATR column)
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+var table t = table.new(position.top_center, 8, 2,
+     bgcolor=color.new(C_BG, 10),
+     border_color=color.new(color.gray, 60), border_width=1,
+     frame_color=color.new(color.gray, 50), frame_width=1)
+
+string rsiTxt =
+     rsi > rsiOB ? str.tostring(rsi, "#.0") + " OB" :
+     rsi < rsiOS ? str.tostring(rsi, "#.0") + " OS" :
+     str.tostring(rsi, "#.0")
+
+string baTxt =
+     biasScore == 4 ? "4/4 STRONG" :
+     biasScore == 3 ? "3/4 WEAK"   :
+     biasScore == 2 ? "2/4 MIXED"  : "≤1/4"
+
+if barstate.islast
+    color hdrBg  = color.new(color.rgb(12, 12, 22), 5)
+    color hdrTxt = color.new(color.silver, 15)
+
+    // Headers
+    table.cell(t, 0, 0, instrName,     text_color=C_GOLD,  text_size=size.small, bgcolor=hdrBg)
+    table.cell(t, 1, 0, "DAY%",        text_color=hdrTxt,  text_size=size.small, bgcolor=hdrBg)
+    table.cell(t, 2, 0, "TREND",       text_color=hdrTxt,  text_size=size.small, bgcolor=hdrBg)
+    table.cell(t, 3, 0, "HTF",         text_color=hdrTxt,  text_size=size.small, bgcolor=hdrBg)
+    table.cell(t, 4, 0, "RSI",         text_color=hdrTxt,  text_size=size.small, bgcolor=hdrBg)
+    table.cell(t, 5, 0, "GOLD IMPACT", text_color=hdrTxt,  text_size=size.small, bgcolor=hdrBg)
+    table.cell(t, 6, 0, "BIAS",        text_color=hdrTxt,  text_size=size.small, bgcolor=hdrBg)
+    table.cell(t, 7, 0, "ATR",         text_color=hdrTxt,  text_size=size.small, bgcolor=hdrBg)
+
+    // Values row
+    string priceStr = is10Y ? str.tostring(close, "#.000") + "%" : str.tostring(close, "#.00")
+    table.cell(t, 0, 1, priceStr,
+         text_color=C_WHITE, text_size=size.normal,
+         bgcolor=dayChg >= 0 ? cellUp : cellDn)
+
+    color dayTxtCol = dayChg >= 0 ? trendUpCol : trendDnCol
+    table.cell(t, 1, 1, (dayChg >= 0 ? "▲" : "▼") + str.tostring(math.abs(dayChg), "#.00") + "%",
+         text_color=dayTxtCol, text_size=size.normal,
+         bgcolor=dayChg >= 0 ? cellUp : cellDn)
+
+    color trendBg = trendBull ? cellUp : trendBear ? cellDn : color.rgb(25, 25, 45)
+    table.cell(t, 2, 1, trendTxt, text_color=C_WHITE, text_size=size.normal, bgcolor=trendBg)
+
+    color htfBg = htfBull ? cellUp : htfBear ? cellDn : color.rgb(25, 25, 45)
+    table.cell(t, 3, 1, htfTxt, text_color=C_WHITE, text_size=size.normal, bgcolor=htfBg)
+
+    color rsiBg = na
+    if isPositive
+        rsiBg := rsi > rsiOB ? color.rgb(65, 10, 10) : rsi < rsiOS ? color.rgb(0, 55, 20) : color.rgb(20, 30, 55)
+    else
+        rsiBg := rsi > rsiOB ? color.rgb(0, 55, 20) : rsi < rsiOS ? color.rgb(65, 10, 10) : color.rgb(20, 30, 55)
+    table.cell(t, 4, 1, rsiTxt, text_color=C_WHITE, text_size=size.normal, bgcolor=rsiBg)
+
+    color impBg  = goldBullish ? color.rgb(0, 60, 20) : goldBearish ? color.rgb(65, 10, 10) : color.rgb(25, 25, 45)
+    color impTxt = goldBullish ? color.rgb(80, 255, 140) : goldBearish ? color.rgb(255, 100, 100) : color.rgb(180, 180, 180)
+    table.cell(t, 5, 1, goldImpact, text_color=impTxt, text_size=size.normal, bgcolor=impBg)
+
+    color baBg = na
+    if isPositive
+        baBg := biasScore == 4 ? color.rgb(0, 55, 20) : biasScore >= 3 ? color.rgb(50, 30, 0) : biasScore == 2 ? color.rgb(25, 25, 45) : color.rgb(65, 10, 10)
+    else
+        baBg := biasScore == 4 ? color.rgb(65, 10, 10) : biasScore >= 3 ? color.rgb(50, 30, 0) : biasScore == 2 ? color.rgb(25, 25, 45) : color.rgb(0, 55, 20)
+    table.cell(t, 6, 1, baTxt, text_color=C_WHITE, text_size=size.normal, bgcolor=baBg)
+
+    // ── NEW: ATR column ────────────────────────────────────────────────
+    // Shows ATR value + status (LOW/NORMAL/HIGH/SPIKE)
+    // Uses ATR% (ATR ÷ price × 100) so it works for DXY, US10Y, Gold, VIX
+    string atrDisp = str.tostring(atrV, "#.###") + " " + atrStatusTxt
+    table.cell(t, 7, 1, atrDisp,
+         text_color=atrStatusCol, text_size=size.normal, bgcolor=atrStatusBg)
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// I) ALERTS
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+alertcondition(ta.crossover(ema9, ema21),  "EMA9 Cross Up",   "{{ticker}} EMA9 crossed above EMA21")
+alertcondition(ta.crossunder(ema9, ema21), "EMA9 Cross Down", "{{ticker}} EMA9 crossed below EMA21")
+alertcondition(bullPinSignal,              "Bull Pin Bar",     "Bullish pin bar on {{ticker}}")
+alertcondition(bearPinSignal,              "Bear Pin Bar",     "Bearish pin bar on {{ticker}}")
+alertcondition(rsi > rsiOB,               "RSI Overbought",   "{{ticker}} RSI overbought")
+alertcondition(rsi < rsiOS,               "RSI Oversold",     "{{ticker}} RSI oversold")
+alertcondition(atrPct > 0.30,             "ATR Spike Alert",  "{{ticker}} ATR spike — high volatility event")
