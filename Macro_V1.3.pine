@@ -1,5 +1,5 @@
 //@version=5
-indicator("🌍 Macro V1.3", overlay=true, max_labels_count=200, max_lines_count=200)
+indicator("🌍 Gold Macro V1.3", overlay=true, max_labels_count=200, max_lines_count=200)
 // ─────────────────────────────────────────────────────────────────────────────
 // UNIVERSAL GOLD MACRO COMPANION — NirajRai May 2026
 // V1.3: ICM-style dashboard, CDO/CDH/CDL/PDH/PDL levels, ADX, EMA SEP
@@ -286,19 +286,20 @@ var label _lPDH = na, var label _lPDO = na, var label _lPDC = na, var label _lPD
 if barstate.islast and showLevels
     label.delete(_lCDH), label.delete(_lCDO), label.delete(_lCDL)
     label.delete(_lPDH), label.delete(_lPDO), label.delete(_lPDC), label.delete(_lPDL)
-    int _xl = bar_index - 40
+    int _xr = bar_index + 3
 
     // Current Day — cyan
     color _cdCol = color.rgb(0, 200, 255)
-    _lCDH := label.new(_xl, cdHigh, "CDH", style=label.style_none, textcolor=_cdCol, size=size.small)
-    _lCDO := label.new(_xl, dOpen,  "CDO", style=label.style_none, textcolor=color.rgb(255, 200, 60), size=size.small)
-    _lCDL := label.new(_xl, cdLow,  "CDL", style=label.style_none, textcolor=_cdCol, size=size.small)
+    _lCDH := label.new(_xr, cdHigh, "CDH", style=label.style_none, textcolor=_cdCol, size=size.small)
+    _lCDO := label.new(_xr, dOpen,  "CDO", style=label.style_none, textcolor=color.rgb(255, 200, 60), size=size.small)
+    _lCDL := label.new(_xr, cdLow,  "CDL", style=label.style_none, textcolor=_cdCol, size=size.small)
 
-    // Previous Day — red/green
-    _lPDH := label.new(_xl - 15, pHigh, "PDH", style=label.style_none, textcolor=color.rgb(255, 100, 100), size=size.small)
-    _lPDO := label.new(_xl - 15, pOpen, "PDO", style=label.style_none, textcolor=color.rgb(255, 180, 100), size=size.small)
-    _lPDC := label.new(_xl - 15, pClose,"PDC", style=label.style_none, textcolor=color.rgb(180, 180, 255), size=size.small)
-    _lPDL := label.new(_xl - 15, pLow,  "PDL", style=label.style_none, textcolor=color.rgb(100, 255, 100), size=size.small)
+    // Previous Day — offset slightly more right
+    int _xr2 = bar_index + 6
+    _lPDH := label.new(_xr2, pHigh, "PDH", style=label.style_none, textcolor=color.rgb(255, 100, 100), size=size.small)
+    _lPDO := label.new(_xr2, pOpen, "PDO", style=label.style_none, textcolor=color.rgb(255, 180, 100), size=size.small)
+    _lPDC := label.new(_xr2, pClose,"PDC", style=label.style_none, textcolor=color.rgb(180, 180, 255), size=size.small)
+    _lPDL := label.new(_xr2, pLow,  "PDL", style=label.style_none, textcolor=color.rgb(100, 255, 100), size=size.small)
 
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // G3) WAIT ZONE BAND
@@ -309,7 +310,6 @@ wzLookback   = input.int(50,     "Lookback Bars (range size)", group=grp_wz, min
 wzBuffer     = input.float(0.5,  "ATR Buffer Multiplier",      group=grp_wz, minval=0.1, maxval=3.0, step=0.1)
 
 float wz_high   = ta.highest(high, wzLookback)
-int _rndLvl = syminfo.mintick <= 0.001 ? 3 : 2
 float wz_low    = ta.lowest(low,   wzLookback)
 float wz_buffer = atrV * wzBuffer
 float wz_upper  = wz_high + wz_buffer
@@ -356,31 +356,27 @@ if barstate.islast and showWaitZone
     label.delete(wz_sig_lbl)
 
     int x1 = bar_index - wzLookback
-    int x2 = bar_index + 10
+    int x2 = bar_index + 9
 
     color _upLineCol = wzInRange ? color.new(color.gray,45) : color.new(color.red,25)
     color _dnLineCol = wzInRange ? color.new(color.gray,45) : color.new(color.green,25)
 
     wz_up_line  := line.new(x1, wz_upper, x2, wz_upper,
-         color=_upLineCol, width=2, style=line.style_dashed)
+         color=_upLineCol, width=1, style=line.style_dotted)
     wz_dn_line  := line.new(x1, wz_lower, x2, wz_lower,
-         color=_dnLineCol, width=2, style=line.style_dashed)
+         color=_dnLineCol, width=1, style=line.style_dotted)
     wz_mid_line := line.new(x1, wz_mid,   x2, wz_mid,
          color=color.new(color.gray,70), width=1, style=line.style_dotted)
 
-    wz_up_lbl := label.new(x2, wz_upper,
-         "RESIST " + str.tostring(math.round(wz_upper, _rndLvl)),
-         style=label.style_label_left,
-         color=color.new(color.gray,35),
+    wz_up_lbl := label.new(x2, wz_upper, "RESIST",
+         style=label.style_none,
          textcolor=color.rgb(200,155,155), size=size.small)
-    wz_dn_lbl := label.new(x2, wz_lower,
-         "SUPPRT " + str.tostring(math.round(wz_lower, _rndLvl)),
-         style=label.style_label_left,
-         color=color.new(color.gray,35),
+    wz_dn_lbl := label.new(x2, wz_lower, "SUPPRT",
+         style=label.style_none,
          textcolor=color.rgb(155,200,155), size=size.small)
     wz_sig_lbl := label.new(x2, wz_mid, wzGoldSignal,
-         style=label.style_label_left,
-         color=wzSignalBg, textcolor=wzSignalTx, size=size.normal)
+         style=label.style_none,
+         textcolor=wzSignalTx, size=size.small)
 
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // H) TOP TABLE — ICM-style: 12 columns
@@ -453,7 +449,7 @@ if barstate.islast
     table.cell(t, 7,  0, "ATR",   text_color=hdrTxt, text_size=size.small, bgcolor=hdrBg)
     table.cell(t, 8,  0, "RSI",   text_color=hdrTxt, text_size=size.small, bgcolor=hdrBg)
     table.cell(t, 9,  0, "EMA",   text_color=hdrTxt, text_size=size.small, bgcolor=hdrBg)
-    table.cell(t, 10, 0, "MACRO", text_color=hdrTxt, text_size=size.small, bgcolor=hdrBg)
+    table.cell(t, 10, 0, "BIAS",  text_color=hdrTxt, text_size=size.small, bgcolor=hdrBg)
 
     // ── Row 1: Values ──
     table.cell(t, 0, 1, zoneTxt, text_color=zoneTx, text_size=size.normal, bgcolor=zoneBg)
