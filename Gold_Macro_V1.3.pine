@@ -1,15 +1,10 @@
 //@version=5
-indicator("🌍 Gold Macro V1.2", overlay=true, max_labels_count=200, max_lines_count=200)
+indicator("🌍 Gold Macro V1.3", overlay=true, max_labels_count=200, max_lines_count=200)
 // ─────────────────────────────────────────────────────────────────────────────
 // UNIVERSAL GOLD MACRO COMPANION — NirajRai May 2026
-// V1.2: Added ATR status column to top table
-//       ATR displayed as % of price (works for DXY, US10Y, SP500, VIX, Gold)
-//
-// ATR % Thresholds (universal across all instruments):
-//   < 0.05%  = 🔵 LOW    — market sleeping, wait
-//   0.05–0.15% = 🟢 NORMAL — good to trade
-//   0.15–0.30% = 🟡 HIGH   — big moves, widen SL
-//   > 0.30%  = 🔴 SPIKE  — news/event, avoid or tiny size
+// V1.3: ICM-style dashboard, CDO/CDH/CDL/PDH/PDL levels, ADX, EMA SEP
+//       Multi-TF % changes piggybacked on existing security calls
+//       ZONE-first table layout for quick correlation with ICM gold chart
 // ─────────────────────────────────────────────────────────────────────────────
 
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -53,6 +48,9 @@ volFilter = input.bool(true,  "Volume Filter for Pins", group=grp_vol)
 volMaLen  = input.int(20,     "Volume MA Length",        group=grp_vol)
 volMult   = input.float(1.2,  "Min Volume × MA", minval=1.0, step=0.1, group=grp_vol)
 
+grp_lvl       = "📅 Levels"
+showLevels    = input.bool(true, "Show CDO/CDH/CDL/PDH/PDL", group=grp_lvl)
+
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // A) AUTO-DETECT INSTRUMENT
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -84,6 +82,9 @@ float volRatio = volMA > 0 ? nz(volume, 1) / volMA : 1.0
 float dayChg   = (close - open) / open * 100
 bool  hasVol   = not na(volume) and volume > 0
 
+// ADX — via ta.dmi, no security call needed
+[_diP, _diM, adxV] = ta.dmi(14, 14)
+
 // Trend
 bool trendBull = ema9 > ema21 and ema21 > ema200
 bool trendBear = ema9 < ema21 and ema21 < ema200
@@ -95,7 +96,12 @@ int  transp     = compressed ? 60 : 0
 float distPct = math.abs(close - ema9) / close * 100
 string pullTxt = distPct > 0.6 ? "EXTENDED" : distPct < 0.15 ? "AT EMA" : "HEALTHY"
 
-// HTF
+// EMA SEP — uses existing EMAs, zero new calls
+float _emaSep = (math.max(ema9, math.max(ema21, ema200)) -
+     math.min(ema9, math.min(ema21, ema200))) / close * 100
+string emaSepTxt = _emaSep < 0.15 ? "COMPRESS" : _emaSep > 0.5 ? "EXPAND" : "NORMAL"
+
+// HTF — existing 3 security calls
 float htfE9   = request.security(syminfo.tickerid, htfTf, ta.ema(close, 9),   lookahead=barmerge.lookahead_off)
 float htfE21  = request.security(syminfo.tickerid, htfTf, ta.ema(close, 21),  lookahead=barmerge.lookahead_off)
 float htfE200 = request.security(syminfo.tickerid, htfTf, ta.ema(close, 200), lookahead=barmerge.lookahead_off)
@@ -103,20 +109,46 @@ bool htfBull  = htfE9 > htfE21 and htfE21 > htfE200
 bool htfBear  = htfE9 < htfE21 and htfE21 < htfE200
 string htfTxt = htfBull ? "HTF UP" : htfBear ? "HTF DN" : "HTF RNG"
 
-// MTF RSI bias
-float rsi5  = request.security(syminfo.tickerid, "5",   ta.rsi(close, rsiLen), lookahead=barmerge.lookahead_off)
-float rsi15 = request.security(syminfo.tickerid, "15",  ta.rsi(close, rsiLen), lookahead=barmerge.lookahead_off)
-float rsi1h = request.security(syminfo.tickerid, "60",  ta.rsi(close, rsiLen), lookahead=barmerge.lookahead_off)
-float rsi4h = request.security(syminfo.tickerid, "240", ta.rsi(close, rsiLen), lookahead=barmerge.lookahead_off)
+// MTF RSI + previous close piggybacked — same 4 security calls
+// close[1] = previous bar's close on each TF → meaningful % change
+[rsi5,  close5]  = request.security(syminfo.tickerid, "5",   [ta.rsi(close, rsiLen), close[1]], lookahead=barmerge.lookahead_off)
+[rsi15, close15] = request.security(syminfo.tickerid, "15",  [ta.rsi(close, rsiLen), close[1]], lookahead=barmerge.lookahead_off)
+[rsi1h, close1h] = request.security(syminfo.tickerid, "60",  [ta.rsi(close, rsiLen), close[1]], lookahead=barmerge.lookahead_off)
+[rsi4h, close4h] = request.security(syminfo.tickerid, "240", [ta.rsi(close, rsiLen), close[1]], lookahead=barmerge.lookahead_off)
 int biasScore = (rsi5 > 50 ? 1 : 0) + (rsi15 > 50 ? 1 : 0) + (rsi1h > 50 ? 1 : 0) + (rsi4h > 50 ? 1 : 0)
 
+// Multi-TF % change from piggybacked close
+// Compare current close vs TF close to get approximate change
+float chg5m  = close5  > 0 ? (close - close5)  / close5  * 100 : 0.0
+float chg15m = close15 > 0 ? (close - close15) / close15 * 100 : 0.0
+float chg1h  = close1h > 0 ? (close - close1h) / close1h * 100 : 0.0
+float chg4h  = close4h > 0 ? (close - close4h) / close4h * 100 : 0.0
+
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ATR STATUS (universal — works for any instrument)
+// B2) DAILY LEVELS — CDO/CDH/CDL/PDH/PDL/PDO/PDC (+1 security call, tuple)
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[dOpen, dHigh, dLow, pHigh, pLow, pOpen, pClose] = request.security(
+     syminfo.tickerid, "D",
+     [open, high, low, high[1], low[1], open[1], close[1]],
+     lookahead=barmerge.lookahead_off)
+
+// CDH/CDL — track intraday high/low (free, no security)
+var float cdHigh = na
+var float cdLow  = na
+if ta.change(time("D"))
+    cdHigh := high
+    cdLow  := low
+else
+    cdHigh := math.max(nz(cdHigh, high), high)
+    cdLow  := math.min(nz(cdLow, low), low)
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ATR STATUS (universal)
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 string atrStatusTxt =
-     atrPct > 0.30 ? "🔴 SPIKE"  :
-     atrPct > 0.15 ? "🟡 HIGH"   :
-     atrPct > 0.05 ? "🟢 NORMAL" : "🔵 LOW"
+     atrPct > 0.30 ? "SPIKE"  :
+     atrPct > 0.15 ? "HIGH"   :
+     atrPct > 0.05 ? "NORMAL" : "LOW"
 
 color atrStatusCol =
      atrPct > 0.30 ? color.rgb(255, 80,  80)  :
@@ -130,8 +162,6 @@ color atrStatusBg =
      atrPct > 0.05 ? color.rgb(0,   60,  20) :
                      color.rgb(10,  30,  65)
 
-string atrCellTxt = str.tostring(atrV, "#.###") + "\n" + atrStatusTxt
-
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // C) GOLD IMPACT
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -142,11 +172,11 @@ bool goldBearish  = false
 if isPositive
     goldBullish := trendBull
     goldBearish := trendBear
-    goldImpact  := trendBull ? "↑ GOLD BULLISH" : trendBear ? "↓ GOLD BEARISH" : "→ NEUTRAL"
+    goldImpact  := trendBull ? "↑ GOLD BULL" : trendBear ? "↓ GOLD BEAR" : "→ NEUTRAL"
 else
     goldBullish := trendBear
     goldBearish := trendBull
-    goldImpact  := trendBull ? "↓ GOLD BEARISH" : trendBear ? "↑ GOLD BULLISH" : "→ NEUTRAL"
+    goldImpact  := trendBull ? "↓ GOLD BEAR" : trendBear ? "↑ GOLD BULL" : "→ NEUTRAL"
 
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // D) SESSIONS
@@ -248,31 +278,48 @@ color sessColor =
 bgcolor(showSessionBg ? sessColor : na)
 
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// G2) WAIT ZONE BAND
-// Price inside range = market undecided = WAIT (gray)
-// Price breaks UP    = confirmed direction (bearish/bullish for gold)
-// Price breaks DOWN  = confirmed direction (bullish/bearish for gold)
-// Works on DXY, US10Y, VIX, SP500 — auto-adapts gold impact direction
+// G2) DAILY LEVEL LABELS — left side, name only, no lines
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+var label _lCDH = na, var label _lCDO = na, var label _lCDL = na
+var label _lPDH = na, var label _lPDO = na, var label _lPDC = na, var label _lPDL = na
+
+if barstate.islast and showLevels
+    label.delete(_lCDH), label.delete(_lCDO), label.delete(_lCDL)
+    label.delete(_lPDH), label.delete(_lPDO), label.delete(_lPDC), label.delete(_lPDL)
+    int _xl = bar_index - 40
+
+    // Current Day — cyan
+    color _cdCol = color.rgb(0, 200, 255)
+    _lCDH := label.new(_xl, cdHigh, "CDH", style=label.style_none, textcolor=_cdCol, size=size.small)
+    _lCDO := label.new(_xl, dOpen,  "CDO", style=label.style_none, textcolor=color.rgb(255, 200, 60), size=size.small)
+    _lCDL := label.new(_xl, cdLow,  "CDL", style=label.style_none, textcolor=_cdCol, size=size.small)
+
+    // Previous Day — red/green
+    _lPDH := label.new(_xl - 15, pHigh, "PDH", style=label.style_none, textcolor=color.rgb(255, 100, 100), size=size.small)
+    _lPDO := label.new(_xl - 15, pOpen, "PDO", style=label.style_none, textcolor=color.rgb(255, 180, 100), size=size.small)
+    _lPDC := label.new(_xl - 15, pClose,"PDC", style=label.style_none, textcolor=color.rgb(180, 180, 255), size=size.small)
+    _lPDL := label.new(_xl - 15, pLow,  "PDL", style=label.style_none, textcolor=color.rgb(100, 255, 100), size=size.small)
+
+//━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// G3) WAIT ZONE BAND
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 grp_wz       = "⏳ Wait Zone"
 showWaitZone = input.bool(true,  "Show Wait Zone Band",        group=grp_wz)
 wzLookback   = input.int(50,     "Lookback Bars (range size)", group=grp_wz, minval=10, maxval=200)
 wzBuffer     = input.float(0.5,  "ATR Buffer Multiplier",      group=grp_wz, minval=0.1, maxval=3.0, step=0.1)
 
-// Range band calculation
 float wz_high   = ta.highest(high, wzLookback)
+int _rndLvl = syminfo.mintick <= 0.001 ? 3 : 2
 float wz_low    = ta.lowest(low,   wzLookback)
 float wz_buffer = atrV * wzBuffer
 float wz_upper  = wz_high + wz_buffer
 float wz_lower  = wz_low  - wz_buffer
 float wz_mid    = (wz_upper + wz_lower) / 2.0
 
-// Status
 bool wzBreakUp = close > wz_upper
 bool wzBreakDn = close < wz_lower
 bool wzInRange = not wzBreakUp and not wzBreakDn
 
-// Gold signal from break direction
 string wzGoldSignal =
      wzInRange ? "⏳ WAIT — range" :
      wzBreakUp ? (isPositive ? "🟢 GOLD BULL" : "🔴 GOLD BEAR") :
@@ -288,13 +335,11 @@ color wzSignalTx =
      wzBreakUp ? (isPositive ? color.rgb(80,240,130) : color.rgb(245,90,90)) :
                  (isPositive ? color.rgb(245,90,90)  : color.rgb(80,240,130))
 
-// Background tint on chart
 bgcolor(showWaitZone ?
      (wzInRange ? color.new(color.gray, 94) :
       wzBreakUp ? (isPositive ? color.new(color.green,93) : color.new(color.red,92)) :
                   (isPositive ? color.new(color.red,92)   : color.new(color.green,93))) : na)
 
-// Band lines + labels
 var line  wz_up_line  = na
 var line  wz_dn_line  = na
 var line  wz_mid_line = na
@@ -323,14 +368,13 @@ if barstate.islast and showWaitZone
     wz_mid_line := line.new(x1, wz_mid,   x2, wz_mid,
          color=color.new(color.gray,70), width=1, style=line.style_dotted)
 
-    int _rnd = syminfo.mintick <= 0.001 ? 3 : 2
     wz_up_lbl := label.new(x2, wz_upper,
-         "RESIST " + str.tostring(math.round(wz_upper, _rnd)),
+         "RESIST " + str.tostring(math.round(wz_upper, _rndLvl)),
          style=label.style_label_left,
          color=color.new(color.gray,35),
          textcolor=color.rgb(200,155,155), size=size.small)
     wz_dn_lbl := label.new(x2, wz_lower,
-         "SUPPRT " + str.tostring(math.round(wz_lower, _rnd)),
+         "SUPPRT " + str.tostring(math.round(wz_lower, _rndLvl)),
          style=label.style_label_left,
          color=color.new(color.gray,35),
          textcolor=color.rgb(155,200,155), size=size.small)
@@ -339,78 +383,121 @@ if barstate.islast and showWaitZone
          color=wzSignalBg, textcolor=wzSignalTx, size=size.normal)
 
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// H) TOP TABLE — 8 columns (added ATR column)
+// H) TOP TABLE — ICM-style: 12 columns
+// ZONE | GOLD IMPACT | BIAS | 5m | 15m | 1H | 4H | HTF | ADX | ATR | RSI | EMA
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-var table t = table.new(position.top_center, 8, 2,
-     bgcolor=color.new(C_BG, 10),
-     border_color=color.new(color.gray, 60), border_width=1,
-     frame_color=color.new(color.gray, 50), frame_width=1)
+// ZONE status for table
+string zoneTxt =
+     wzBreakUp ? (isPositive ? "ACTIVE ↑" : "ACTIVE ↓") :
+     wzBreakDn ? (isPositive ? "ACTIVE ↓" : "ACTIVE ↑") :
+     "INACTIVE"
 
+color zoneBg =
+     wzInRange ? color.rgb(50, 50, 50) :
+     wzBreakUp ? (isPositive ? color.rgb(0, 55, 20) : color.rgb(65, 10, 10)) :
+                 (isPositive ? color.rgb(65, 10, 10) : color.rgb(0, 55, 20))
+
+color zoneTx =
+     wzInRange ? color.rgb(160, 160, 160) :
+     wzBreakUp ? (isPositive ? color.rgb(80, 255, 140) : color.rgb(255, 100, 100)) :
+                 (isPositive ? color.rgb(255, 100, 100) : color.rgb(80, 255, 140))
+
+// ADX text
+string adxTxt =
+     adxV >= 25 ? str.tostring(adxV, "#.0") + " TREND" :
+     adxV >= 20 ? str.tostring(adxV, "#.0") + " WEAK"  :
+                  str.tostring(adxV, "#.0") + " RANGE"
+color adxBg =
+     adxV >= 25 ? color.rgb(0, 55, 20) :
+     adxV >= 20 ? color.rgb(50, 40, 0) :
+                  color.rgb(50, 20, 20)
+
+// RSI text
 string rsiTxt =
      rsi > rsiOB ? str.tostring(rsi, "#.0") + " OB" :
      rsi < rsiOS ? str.tostring(rsi, "#.0") + " OS" :
      str.tostring(rsi, "#.0")
 
-string baTxt =
-     biasScore == 4 ? "4/4 STRONG" :
-     biasScore == 3 ? "3/4 WEAK"   :
-     biasScore == 2 ? "2/4 MIXED"  : "≤1/4"
+// MACRO text (replaces GOLD IMPACT — cleaner)
+string macroTxt = goldBullish ? "↑ BULL" : goldBearish ? "↓ BEAR" : "→ RANGE"
+color macroBg   = goldBullish ? color.rgb(0, 60, 20) : goldBearish ? color.rgb(65, 10, 10) : color.rgb(25, 25, 45)
+color macroTx   = goldBullish ? color.rgb(80, 255, 140) : goldBearish ? color.rgb(255, 100, 100) : color.rgb(180, 180, 180)
+
+// EMA SEP colors
+color emaSepBg =
+     _emaSep < 0.15 ? color.rgb(60, 40, 0) :
+     _emaSep > 0.5  ? color.rgb(0, 55, 20) :
+                      color.rgb(25, 25, 45)
+color emaSepTx =
+     _emaSep < 0.15 ? color.rgb(255, 200, 50) :
+     _emaSep > 0.5  ? color.rgb(80, 255, 140) :
+                      color.rgb(180, 180, 180)
+
+var table t = table.new(position.top_center, 11, 2,
+     bgcolor=color.new(C_BG, 10),
+     border_color=color.new(color.gray, 60), border_width=1,
+     frame_color=color.new(color.gray, 50), frame_width=1)
 
 if barstate.islast
     color hdrBg  = color.new(color.rgb(12, 12, 22), 5)
     color hdrTxt = color.new(color.silver, 15)
 
-    // Headers
-    table.cell(t, 0, 0, instrName,     text_color=C_GOLD,  text_size=size.small, bgcolor=hdrBg)
-    table.cell(t, 1, 0, "DAY%",        text_color=hdrTxt,  text_size=size.small, bgcolor=hdrBg)
-    table.cell(t, 2, 0, "TREND",       text_color=hdrTxt,  text_size=size.small, bgcolor=hdrBg)
-    table.cell(t, 3, 0, "HTF",         text_color=hdrTxt,  text_size=size.small, bgcolor=hdrBg)
-    table.cell(t, 4, 0, "RSI",         text_color=hdrTxt,  text_size=size.small, bgcolor=hdrBg)
-    table.cell(t, 5, 0, "GOLD IMPACT", text_color=hdrTxt,  text_size=size.small, bgcolor=hdrBg)
-    table.cell(t, 6, 0, "BIAS",        text_color=hdrTxt,  text_size=size.small, bgcolor=hdrBg)
-    table.cell(t, 7, 0, "ATR",         text_color=hdrTxt,  text_size=size.small, bgcolor=hdrBg)
+    // ── Row 0: Headers ──
+    table.cell(t, 0,  0, "ZONE",  text_color=hdrTxt, text_size=size.small, bgcolor=hdrBg)
+    table.cell(t, 1,  0, "5m",    text_color=hdrTxt, text_size=size.small, bgcolor=hdrBg)
+    table.cell(t, 2,  0, "15m",   text_color=hdrTxt, text_size=size.small, bgcolor=hdrBg)
+    table.cell(t, 3,  0, "1H",    text_color=hdrTxt, text_size=size.small, bgcolor=hdrBg)
+    table.cell(t, 4,  0, "4H",    text_color=hdrTxt, text_size=size.small, bgcolor=hdrBg)
+    table.cell(t, 5,  0, "HTF",   text_color=hdrTxt, text_size=size.small, bgcolor=hdrBg)
+    table.cell(t, 6,  0, "ADX",   text_color=hdrTxt, text_size=size.small, bgcolor=hdrBg)
+    table.cell(t, 7,  0, "ATR",   text_color=hdrTxt, text_size=size.small, bgcolor=hdrBg)
+    table.cell(t, 8,  0, "RSI",   text_color=hdrTxt, text_size=size.small, bgcolor=hdrBg)
+    table.cell(t, 9,  0, "EMA",   text_color=hdrTxt, text_size=size.small, bgcolor=hdrBg)
+    table.cell(t, 10, 0, "MACRO", text_color=hdrTxt, text_size=size.small, bgcolor=hdrBg)
 
-    // Values row
-    string priceStr = is10Y ? str.tostring(close, "#.000") + "%" : str.tostring(close, "#.00")
-    table.cell(t, 0, 1, priceStr,
-         text_color=C_WHITE, text_size=size.normal,
-         bgcolor=dayChg >= 0 ? cellUp : cellDn)
+    // ── Row 1: Values ──
+    table.cell(t, 0, 1, zoneTxt, text_color=zoneTx, text_size=size.normal, bgcolor=zoneBg)
 
-    color dayTxtCol = dayChg >= 0 ? trendUpCol : trendDnCol
-    table.cell(t, 1, 1, (dayChg >= 0 ? "▲" : "▼") + str.tostring(math.abs(dayChg), "#.00") + "%",
-         text_color=dayTxtCol, text_size=size.normal,
-         bgcolor=dayChg >= 0 ? cellUp : cellDn)
+    // TF % colors — gold-impact aware (inverse: DXY up = red, DXY down = green)
+    color _grnTx = color.rgb(80,255,140)
+    color _redTx = color.rgb(255,100,100)
+    color _grnBg = color.rgb(0,55,20)
+    color _redBg = color.rgb(60,10,10)
+    bool _pUp = isPositive
 
-    color trendBg = trendBull ? cellUp : trendBear ? cellDn : color.rgb(25, 25, 45)
-    table.cell(t, 2, 1, trendTxt, text_color=C_WHITE, text_size=size.normal, bgcolor=trendBg)
+    color _c5  = (chg5m  >= 0) == _pUp ? _grnTx : _redTx
+    color _c15 = (chg15m >= 0) == _pUp ? _grnTx : _redTx
+    color _c1h = (chg1h  >= 0) == _pUp ? _grnTx : _redTx
+    color _c4h = (chg4h  >= 0) == _pUp ? _grnTx : _redTx
+    color _bg5  = (chg5m  >= 0) == _pUp ? _grnBg : _redBg
+    color _bg15 = (chg15m >= 0) == _pUp ? _grnBg : _redBg
+    color _bg1h = (chg1h  >= 0) == _pUp ? _grnBg : _redBg
+    color _bg4h = (chg4h  >= 0) == _pUp ? _grnBg : _redBg
+
+    table.cell(t, 1, 1, str.tostring(chg5m,  "#.00"), text_color=_c5,  text_size=size.normal, bgcolor=_bg5)
+    table.cell(t, 2, 1, str.tostring(chg15m, "#.00"), text_color=_c15, text_size=size.normal, bgcolor=_bg15)
+    table.cell(t, 3, 1, str.tostring(chg1h,  "#.00"), text_color=_c1h, text_size=size.normal, bgcolor=_bg1h)
+    table.cell(t, 4, 1, str.tostring(chg4h,  "#.00"), text_color=_c4h, text_size=size.normal, bgcolor=_bg4h)
 
     color htfBg = htfBull ? cellUp : htfBear ? cellDn : color.rgb(25, 25, 45)
-    table.cell(t, 3, 1, htfTxt, text_color=C_WHITE, text_size=size.normal, bgcolor=htfBg)
+    table.cell(t, 5, 1, htfTxt, text_color=C_WHITE, text_size=size.normal, bgcolor=htfBg)
+
+    table.cell(t, 6, 1, adxTxt, text_color=C_WHITE, text_size=size.normal, bgcolor=adxBg)
+
+    string atrDisp = str.tostring(atrV, "#.###") + " " + atrStatusTxt
+    table.cell(t, 7, 1, atrDisp, text_color=atrStatusCol, text_size=size.normal, bgcolor=atrStatusBg)
 
     color rsiBg = na
     if isPositive
         rsiBg := rsi > rsiOB ? color.rgb(65, 10, 10) : rsi < rsiOS ? color.rgb(0, 55, 20) : color.rgb(20, 30, 55)
     else
         rsiBg := rsi > rsiOB ? color.rgb(0, 55, 20) : rsi < rsiOS ? color.rgb(65, 10, 10) : color.rgb(20, 30, 55)
-    table.cell(t, 4, 1, rsiTxt, text_color=C_WHITE, text_size=size.normal, bgcolor=rsiBg)
+    table.cell(t, 8, 1, rsiTxt, text_color=C_WHITE, text_size=size.normal, bgcolor=rsiBg)
 
-    color impBg  = goldBullish ? color.rgb(0, 60, 20) : goldBearish ? color.rgb(65, 10, 10) : color.rgb(25, 25, 45)
-    color impTxt = goldBullish ? color.rgb(80, 255, 140) : goldBearish ? color.rgb(255, 100, 100) : color.rgb(180, 180, 180)
-    table.cell(t, 5, 1, goldImpact, text_color=impTxt, text_size=size.normal, bgcolor=impBg)
+    table.cell(t, 9, 1, emaSepTxt, text_color=emaSepTx, text_size=size.normal, bgcolor=emaSepBg)
 
-    color baBg = na
-    if isPositive
-        baBg := biasScore == 4 ? color.rgb(0, 55, 20) : biasScore >= 3 ? color.rgb(50, 30, 0) : biasScore == 2 ? color.rgb(25, 25, 45) : color.rgb(65, 10, 10)
-    else
-        baBg := biasScore == 4 ? color.rgb(65, 10, 10) : biasScore >= 3 ? color.rgb(50, 30, 0) : biasScore == 2 ? color.rgb(25, 25, 45) : color.rgb(0, 55, 20)
-    table.cell(t, 6, 1, baTxt, text_color=C_WHITE, text_size=size.normal, bgcolor=baBg)
-
-    // ── NEW: ATR column ────────────────────────────────────────────────
-    // Shows ATR value + status (LOW/NORMAL/HIGH/SPIKE)
-    // Uses ATR% (ATR ÷ price × 100) so it works for DXY, US10Y, Gold, VIX
-    string atrDisp = str.tostring(atrV, "#.###") + " " + atrStatusTxt
-    table.cell(t, 7, 1, atrDisp,
-         text_color=atrStatusCol, text_size=size.normal, bgcolor=atrStatusBg)
+    // MACRO — last column = final decision
+    table.cell(t, 10, 1, macroTxt, text_color=macroTx, text_size=size.normal, bgcolor=macroBg)
 
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // I) ALERTS
