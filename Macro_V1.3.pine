@@ -1,5 +1,5 @@
 //@version=5
-indicator("🌍 Gold Macro V1.3", overlay=true, max_labels_count=200, max_lines_count=200)
+indicator("🌍 Macro V1.3", overlay=true, max_labels_count=200, max_lines_count=200)
 // ─────────────────────────────────────────────────────────────────────────────
 // UNIVERSAL GOLD MACRO COMPANION — NirajRai May 2026
 // V1.3: ICM-style dashboard, CDO/CDH/CDL/PDH/PDL levels, ADX, EMA SEP
