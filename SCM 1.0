@@ -1,0 +1,551 @@
+//@version=6
+indicator("SCM 1.0 — Stock Confluence Matrix", overlay=true,
+     max_labels_count=500, max_lines_count=500, max_bars_back=5000)
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// A) INPUTS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+grp_ema    = "📈 EMAs"
+emaFast    = input.int(9,   "Fast EMA",   group=grp_ema)
+emaMid     = input.int(20,  "Mid EMA",    group=grp_ema)
+emaSlow    = input.int(50,  "Slow EMA",   group=grp_ema)
+emaAnchor  = input.int(200, "Anchor EMA", group=grp_ema)
+emaIntF    = input.int(20,  "Internal Fast (micro-trend)", group=grp_ema, display=display.none)
+emaIntS    = input.int(50,  "Internal Slow (micro-trend)", group=grp_ema, display=display.none)
+
+grp_sess   = "🕐 Session (IST)"
+string tz  = "GMT+5:30"
+sessOpenTrap  = input.session("0915-0945", "Opening Trap",    group=grp_sess)
+sessMornTrend = input.session("0945-1130", "Morning Trend",   group=grp_sess)
+sessLunchChop = input.session("1130-1300", "Lunch Chop",      group=grp_sess)
+sessAfternoon = input.session("1300-1430", "Afternoon",       group=grp_sess)
+sessPowerHour = input.session("1430-1515", "Power Hour",      group=grp_sess)
+sessClose     = input.session("1515-1530", "Close",           group=grp_sess)
+
+grp_htf    = "🔭 HTF"
+htfTf      = input.timeframe("30", "HTF Timeframe", group=grp_htf)
+
+grp_zone   = "📊 Zone + Filters"
+zoneLen    = input.int(50,    "Zone Lookback",        group=grp_zone)
+confThresh = input.int(50,    "Min CONF for signals", group=grp_zone)
+showScalp  = input.bool(true, "Show Scalp Signals",   group=grp_zone)
+showLQ     = input.bool(true, "Show LQ Sweeps",       group=grp_zone)
+showGap    = input.bool(true, "Show Gap Labels",      group=grp_zone)
+showLevels = input.bool(true, "Show CD/PD Levels",    group=grp_zone)
+
+grp_liq    = "💧 Micro Liquidity"
+liqLookback    = input.int(5,      "Sweep Lookback",     minval=3, maxval=15, group=grp_liq)
+liqCooldown    = input.int(12,     "Cooldown (bars)",     minval=1, maxval=30, group=grp_liq)
+liqAtrMult     = input.float(0.40, "ATR Expansion",       minval=0.2, maxval=3.0, step=0.05, group=grp_liq)
+
+grp_expiry = "📅 Expiry"
+expiryDay  = input.string("Thursday", "Weekly Expiry Day", options=["Monday","Tuesday","Wednesday","Thursday","Friday"], group=grp_expiry)
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// B) CORE CALCULATIONS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+float ef   = ta.ema(close, emaFast)
+float em   = ta.ema(close, emaMid)
+float es   = ta.ema(close, emaSlow)
+float ea   = ta.ema(close, emaAnchor)
+float eIF  = ta.ema(close, emaIntF)
+float eIS  = ta.ema(close, emaIntS)
+
+float atrV    = ta.atr(14)
+float atrPct  = close > 0 ? atrV / close * 100 : 0.0
+float rsiV    = ta.rsi(close, 14)
+float vwapV   = ta.vwap(close)
+bool  hasVol  = not na(volume) and volume > 0
+float volMA   = ta.sma(nz(volume, 1), 20)
+float volRatio = volMA > 0 ? nz(volume, 1) / volMA : 1.0
+
+// ADX
+[_diP, _diM, adxV] = ta.dmi(14, 14)
+
+// Body / Wick
+float totalRange = high - low
+float bodyTop    = math.max(open, close)
+float bodyBot    = math.min(open, close)
+float bodySize   = math.max(bodyTop - bodyBot, syminfo.mintick)
+float upperWick  = high - bodyTop
+float lowerWick  = bodyBot - low
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// C) SESSION ENGINE — NSE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+bool inTrap   = not na(time(timeframe.period, sessOpenTrap,  tz))
+bool inTrend  = not na(time(timeframe.period, sessMornTrend, tz))
+bool inChop   = not na(time(timeframe.period, sessLunchChop, tz))
+bool inAftn   = not na(time(timeframe.period, sessAfternoon, tz))
+bool inPower  = not na(time(timeframe.period, sessPowerHour, tz))
+bool inClose  = not na(time(timeframe.period, sessClose,     tz))
+bool inMarket = inTrap or inTrend or inChop or inAftn or inPower or inClose
+
+string sessTxt = inTrap  ? "TRAP"  :
+     inTrend ? "TREND" :
+     inChop  ? "CHOP"  :
+     inAftn  ? "AFTN"  :
+     inPower ? "POWER" :
+     inClose ? "CLOSE" : "OFF"
+
+color sessBg = inTrap  ? color.rgb(80, 40, 0)  :
+     inTrend ? color.rgb(0, 55, 20)  :
+     inChop  ? color.rgb(50, 20, 20) :
+     inAftn  ? color.rgb(25, 25, 45) :
+     inPower ? color.rgb(0, 55, 20)  :
+     inClose ? color.rgb(50, 20, 20) : color.rgb(30, 30, 30)
+
+color sessTx = inTrap  ? color.rgb(255, 180, 50) :
+     inTrend ? color.rgb(80, 255, 140) :
+     inChop  ? color.rgb(255, 100, 100) :
+     inAftn  ? color.rgb(180, 180, 180) :
+     inPower ? color.rgb(80, 255, 140) :
+     inClose ? color.rgb(255, 100, 100) : color.rgb(120, 120, 120)
+
+// Trade-allowed sessions
+bool inTradeSession = inTrend or inPower
+bool hardBlock      = inTrap or inChop or inClose or not inMarket
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// D) HTF + MTF — SECURITY CALLS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+float htfEF  = request.security(syminfo.tickerid, htfTf, ta.ema(close, emaFast),   lookahead=barmerge.lookahead_off)
+float htfEM  = request.security(syminfo.tickerid, htfTf, ta.ema(close, emaMid),    lookahead=barmerge.lookahead_off)
+float htfEA  = request.security(syminfo.tickerid, htfTf, ta.ema(close, emaAnchor), lookahead=barmerge.lookahead_off)
+
+bool htfBull = htfEF > htfEM and htfEM > htfEA
+bool htfBear = htfEF < htfEM and htfEM < htfEA
+string htfTxt = htfBull ? "HTF UP" : htfBear ? "HTF DN" : "HTF RNG"
+
+// MTF RSI + close[1] piggybacked
+[rsi5,  c5]  = request.security(syminfo.tickerid, "5",   [ta.rsi(close, 14), close[1]], lookahead=barmerge.lookahead_off)
+[rsi15, c15] = request.security(syminfo.tickerid, "15",  [ta.rsi(close, 14), close[1]], lookahead=barmerge.lookahead_off)
+[rsi1h, c1h] = request.security(syminfo.tickerid, "60",  [ta.rsi(close, 14), close[1]], lookahead=barmerge.lookahead_off)
+[rsi4h, c4h] = request.security(syminfo.tickerid, "240", [ta.rsi(close, 14), close[1]], lookahead=barmerge.lookahead_off)
+
+// Multi-TF % change
+float chg5m  = c5  > 0 ? (close - c5)  / c5  * 100 : 0.0
+float chg15m = c15 > 0 ? (close - c15) / c15 * 100 : 0.0
+float chg1h  = c1h > 0 ? (close - c1h) / c1h * 100 : 0.0
+float chg4h  = c4h > 0 ? (close - c4h) / c4h * 100 : 0.0
+
+// Buy/Sell scoring
+float buy5  = rsi5  > 50 ? rsi5  : 0
+float sell5  = rsi5  <= 50 ? 100 - rsi5  : 0
+float buy15 = rsi15 > 50 ? rsi15 : 0
+float sell15 = rsi15 <= 50 ? 100 - rsi15 : 0
+float buy1h = rsi1h > 50 ? rsi1h : 0
+float sell1h = rsi1h <= 50 ? 100 - rsi1h : 0
+float buy4h = rsi4h > 50 ? rsi4h : 0
+float sell4h = rsi4h <= 50 ? 100 - rsi4h : 0
+float buyAvg  = (buy5 + buy15 + buy1h + buy4h) / 4
+float sellAvg = (sell5 + sell15 + sell1h + sell4h) / 4
+bool isBullBias = buyAvg > sellAvg
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// D2) DAILY LEVELS + GAP DETECTION (+1 security call)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[dOpen, dHigh, dLow, pHigh, pLow, pOpen, pClose] = request.security(
+     syminfo.tickerid, "D",
+     [open, high, low, high[1], low[1], open[1], close[1]],
+     lookahead=barmerge.lookahead_off)
+
+var float cdHigh = na
+var float cdLow = na
+if ta.change(time("D")) != 0
+    cdHigh := high
+    cdLow  := low
+else
+    cdHigh := math.max(nz(cdHigh, high), high)
+    cdLow  := math.min(nz(cdLow, low), low)
+
+// Gap detection
+float gapPct = na(close[1]) ? 0.0 : (dOpen - pClose) / pClose * 100
+bool  gapUp  = gapPct > 0.5
+bool  gapDn  = gapPct < -0.5
+var bool gapShown = false
+if ta.change(time("D")) != 0
+    gapShown := false
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// E) VWAP — WITH PRICE DISTANCE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+float vwapDist = close - vwapV
+bool  aboveVwap = close > vwapV
+string vwapTxt = aboveVwap ? "↑ " + str.tostring(math.abs(vwapDist), "#.##") :
+     "↓ " + str.tostring(math.abs(vwapDist), "#.##")
+color vwapBg = aboveVwap ? color.rgb(0, 55, 20) : color.rgb(60, 10, 10)
+color vwapTx = aboveVwap ? color.rgb(80, 255, 140) : color.rgb(255, 100, 100)
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// F) EMA SEPARATION + TREND
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+float emaSep = (math.max(ef, math.max(em, ea)) -
+     math.min(ef, math.min(em, ea))) / close * 100
+string emaTxt = emaSep < 0.15 ? "COMPRESS" : emaSep > 0.5 ? "EXPAND" : "NORMAL"
+color emaBg = emaSep < 0.15 ? color.rgb(60, 40, 0) :
+     emaSep > 0.5 ? color.rgb(0, 55, 20) : color.rgb(25, 25, 45)
+color emaTx = emaSep < 0.15 ? color.rgb(255, 200, 50) :
+     emaSep > 0.5 ? color.rgb(80, 255, 140) : color.rgb(180, 180, 180)
+
+// Pullback
+float distPct = math.abs(close - ef) / close * 100
+string pullTxt = distPct > 1.5 ? "EXTENDED" : distPct < 0.3 ? "AT EMA" : "PULLBK"
+
+// Exhausted trend
+bool exhausted = adxV > 35 and adxV < adxV[3] and distPct > 1.5
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// G) ZONE ENGINE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+float zoneHi = ta.highest(high, zoneLen)
+float zoneLo = ta.lowest(low, zoneLen)
+float zoneMid = (zoneHi + zoneLo) / 2
+bool  aboveZone = close > zoneMid
+bool  breakoutUp = close > zoneHi
+bool  breakoutDn = close < zoneLo
+
+string zoneTxt = breakoutUp ? "BUY ZONE" : breakoutDn ? "SELL ZONE" : "NO ZONE"
+color zoneBg = breakoutUp ? color.rgb(0, 55, 20) :
+     breakoutDn ? color.rgb(60, 10, 10) : color.rgb(35, 35, 35)
+color zoneTx = breakoutUp ? color.rgb(80, 255, 140) :
+     breakoutDn ? color.rgb(255, 100, 100) : color.rgb(160, 160, 160)
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// H) CONF SCORING — NSE WEIGHTED
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+float _cHTF   = htfBull or htfBear ? 25.0 : 10.0
+float _cSess  = inTradeSession ? 20.0 : inAftn ? 10.0 : 0.0
+float _cADX   = adxV >= 25 ? 15.0 : adxV >= 20 ? 10.0 : 5.0
+float _cVWAP  = (aboveVwap and isBullBias) or (not aboveVwap and not isBullBias) ? 10.0 : 3.0
+float _cEMA   = emaSep > 0.3 ? 10.0 : emaSep > 0.15 ? 6.0 : 2.0
+float _cVol   = hasVol and volRatio >= 1.2 ? 10.0 : 5.0
+float _cRSI   = (rsiV > 40 and rsiV < 60) ? 3.0 : 5.0
+
+// Expiry penalty
+int _expDay = expiryDay == "Monday" ? dayofweek.monday :
+     expiryDay == "Tuesday" ? dayofweek.tuesday :
+     expiryDay == "Wednesday" ? dayofweek.wednesday :
+     expiryDay == "Thursday" ? dayofweek.thursday : dayofweek.friday
+bool isExpiry = dayofweek == _expDay
+float _cExp = isExpiry ? 0.0 : 5.0
+
+float confScore = math.min(_cHTF + _cSess + _cADX + _cVWAP + _cEMA + _cVol + _cRSI + _cExp, 100)
+
+string confTxt = confScore >= 70 ? str.tostring(confScore, "#") + "% HIGH" :
+     confScore >= 50 ? str.tostring(confScore, "#") + "% MED" :
+     str.tostring(confScore, "#") + "% LOW"
+color confBg = confScore >= 70 ? color.rgb(0, 55, 20) :
+     confScore >= 50 ? color.rgb(50, 40, 0) : color.rgb(60, 10, 10)
+
+// Trade Grade
+string gradeTxt = confScore >= 80 and inTradeSession and adxV >= 25 ? "A+" :
+     confScore >= 65 ? "A" :
+     confScore >= 50 ? "B" :
+     confScore >= 35 ? "C" : "AVOID"
+color gradeBg = gradeTxt == "A+" ? color.rgb(0, 70, 30) :
+     gradeTxt == "A" ? color.rgb(0, 55, 20) :
+     gradeTxt == "B" ? color.rgb(50, 40, 0) :
+     gradeTxt == "C" ? color.rgb(60, 30, 0) : color.rgb(65, 10, 10)
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// I) READY + DIRECTION
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+bool isBuyReady  = isBullBias and htfBull and aboveVwap and confScore >= confThresh and inTradeSession
+bool isSellReady = not isBullBias and htfBear and not aboveVwap and confScore >= confThresh and inTradeSession
+
+string readyTxt = isBuyReady ? "△ BUY" : isSellReady ? "△ SELL" :
+     hardBlock ? "AVOID" : "WAIT"
+color readyBg = isBuyReady ? color.rgb(0, 55, 20) :
+     isSellReady ? color.rgb(60, 10, 10) :
+     hardBlock ? color.rgb(65, 10, 10) : color.rgb(50, 40, 0)
+color readyTx = isBuyReady ? color.rgb(80, 255, 140) :
+     isSellReady ? color.rgb(255, 100, 100) :
+     color.rgb(255, 200, 50)
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// J) ADX / ATR TEXT
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+string adxTxt = adxV >= 25 ? str.tostring(adxV, "#.0") + " TREND" :
+     adxV >= 20 ? str.tostring(adxV, "#.0") + " WEAK" :
+     str.tostring(adxV, "#.0") + " RANGE"
+color adxBg = adxV >= 25 ? color.rgb(0, 55, 20) :
+     adxV >= 20 ? color.rgb(50, 40, 0) : color.rgb(50, 20, 20)
+
+string atrTxt = atrPct > 3.0 ? str.tostring(atrPct, "#.#") + " SPIKE" :
+     atrPct > 1.5 ? str.tostring(atrPct, "#.#") + " HIGH" :
+     atrPct > 0.5 ? str.tostring(atrPct, "#.#") + " NRM" :
+     str.tostring(atrPct, "#.#") + " LOW"
+color atrBg = atrPct > 3.0 ? color.rgb(80, 10, 10) :
+     atrPct > 1.5 ? color.rgb(60, 40, 0) :
+     atrPct > 0.5 ? color.rgb(0, 55, 20) : color.rgb(10, 30, 65)
+color atrTx = atrPct > 3.0 ? color.rgb(255, 80, 80) :
+     atrPct > 1.5 ? color.rgb(255, 180, 50) :
+     atrPct > 0.5 ? color.rgb(80, 220, 120) : color.rgb(100, 180, 255)
+
+// RSI text
+string rsiTxt = rsiV > 70 ? str.tostring(rsiV, "#.0") + " OB" :
+     rsiV < 30 ? str.tostring(rsiV, "#.0") + " OS" :
+     str.tostring(rsiV, "#.0")
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// K) SCALP SIGNALS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+bool scalpLong  = showScalp and isBuyReady and close > ef and ef > em and
+     rsiV > 45 and rsiV < 70 and adxV >= 20 and not exhausted
+bool scalpShort = showScalp and isSellReady and close < ef and ef < em and
+     rsiV < 55 and rsiV > 30 and adxV >= 20 and not exhausted
+
+plotshape(scalpLong and not scalpLong[1], title="Scalp Long",
+     style=shape.triangleup, location=location.belowbar,
+     color=color.rgb(0, 230, 118), size=size.tiny,
+     text="SS↑", textcolor=color.rgb(0, 230, 118))
+plotshape(scalpShort and not scalpShort[1], title="Scalp Short",
+     style=shape.triangledown, location=location.abovebar,
+     color=color.rgb(255, 82, 82), size=size.tiny,
+     text="SS↓", textcolor=color.rgb(255, 82, 82))
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// L) MICRO LIQUIDITY SWEEP ENGINE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+float _lqPrevHi = ta.highest(high, liqLookback)[1]
+float _lqPrevLo = ta.lowest(low, liqLookback)[1]
+
+bool _lqMicroBull = close > eIF and eIF > eIS and (eIF - eIS) / close * 100 > 0.05
+bool _lqMicroBear = close < eIF and eIF < eIS and (eIS - eIF) / close * 100 > 0.05
+bool _lqBearDisp  = close < open and bodySize > atrV * 0.55
+bool _lqBullDisp  = close > open and bodySize > atrV * 0.55
+bool _lqExpansion = totalRange > atrV * liqAtrMult
+
+var int _lqLastBar = na
+int _lqCdLen       = adxV < 18 ? liqCooldown * 3 : liqCooldown
+bool _lqCdOK       = na(_lqLastBar) or (bar_index - _lqLastBar > _lqCdLen)
+bool _lqGate       = inTradeSession and not hardBlock and adxV >= 20
+
+bool _lqBuySide = showLQ and _lqCdOK and _lqGate and
+     _lqMicroBear and
+     high > _lqPrevHi and close < _lqPrevHi and
+     upperWick > totalRange * 0.30 and
+     (_lqBearDisp or close < eIF) and _lqExpansion
+
+bool _lqSellSide = showLQ and _lqCdOK and _lqGate and
+     _lqMicroBull and
+     low < _lqPrevLo and close > _lqPrevLo and
+     lowerWick > totalRange * 0.30 and
+     (_lqBullDisp or close > eIF) and _lqExpansion
+
+if _lqBuySide or _lqSellSide
+    _lqLastBar := bar_index
+
+plotshape(_lqBuySide, title="LQ Sweep Bearish",
+     style=shape.labeldown, location=location.abovebar,
+     color=color.rgb(255, 40, 40), text="LQ↓", textcolor=color.white, size=size.tiny)
+plotshape(_lqSellSide, title="LQ Sweep Bullish",
+     style=shape.labelup, location=location.belowbar,
+     color=color.rgb(0, 220, 120), text="LQ↑", textcolor=color.white, size=size.tiny)
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// M) VOLUME SPIKE / OPERATOR DETECTION
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+bool volSpike = hasVol and volRatio >= 3.0 and totalRange > atrV * 0.8
+bool manipulation = volSpike and (upperWick > totalRange * 0.6 or lowerWick > totalRange * 0.6)
+
+plotshape(manipulation and inMarket, title="Operator",
+     style=shape.diamond, location=location.abovebar,
+     color=color.rgb(255, 200, 50), text="OP⚠", textcolor=color.rgb(255, 200, 50), size=size.tiny)
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// N) GAP DETECTION
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+if showGap and ta.change(time("D")) != 0 and not gapShown and (gapUp or gapDn)
+    string gapTxt = gapUp ? "GAP ↑ " + str.tostring(gapPct, "#.#") + "%" :
+         "GAP ↓ " + str.tostring(gapPct, "#.#") + "%"
+    color gapCol = gapUp ? color.rgb(0, 200, 100) : color.rgb(255, 80, 80)
+    label.new(bar_index, gapUp ? low - atrV * 0.5 : high + atrV * 0.5, gapTxt,
+         style=gapUp ? label.style_label_up : label.style_label_down,
+         color=color.new(gapCol, 60), textcolor=gapCol, size=size.small)
+    gapShown := true
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// O) EMA PLOTS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+plot(ef, "EMA Fast",   color=color.new(color.rgb(0, 230, 80), 0),   linewidth=2)
+plot(em, "EMA Mid",    color=color.new(color.rgb(180, 60, 255), 0), linewidth=2)
+plot(es, "EMA Slow",   color=color.new(color.rgb(40, 130, 255), 0), linewidth=2)
+plot(bar_index % 2 == 0 ? ea : na, "EMA Anchor",
+     color=color.new(color.rgb(255, 40, 40), 0), linewidth=2, style=plot.style_linebr)
+plot(hasVol ? vwapV : na, "VWAP",
+     color=color.new(color.white, 10), linewidth=2, style=plot.style_linebr)
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// P) LEVEL LABELS — RIGHT SIDE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+var label _lCDH = na
+var label _lCDO = na
+var label _lCDL = na
+var label _lPDH = na
+var label _lPDO = na
+var label _lPDC = na
+var label _lPDL = na
+
+if barstate.islast and showLevels
+    label.delete(_lCDH)
+    label.delete(_lCDO)
+    label.delete(_lCDL)
+    label.delete(_lPDH)
+    label.delete(_lPDO)
+    label.delete(_lPDC)
+    label.delete(_lPDL)
+    int _xr = bar_index + 3
+    int _xr2 = bar_index + 6
+
+    color _cdCol = color.rgb(0, 200, 255)
+    _lCDH := label.new(_xr, cdHigh, "CDH", style=label.style_none, textcolor=_cdCol, size=size.small)
+    _lCDO := label.new(_xr, dOpen,  "CDO", style=label.style_none, textcolor=color.rgb(255, 200, 60), size=size.small)
+    _lCDL := label.new(_xr, cdLow,  "CDL", style=label.style_none, textcolor=_cdCol, size=size.small)
+
+    _lPDH := label.new(_xr2, pHigh, "PDH", style=label.style_none, textcolor=color.rgb(255, 100, 100), size=size.small)
+    _lPDO := label.new(_xr2, pOpen, "PDO", style=label.style_none, textcolor=color.rgb(255, 180, 100), size=size.small)
+    _lPDC := label.new(_xr2, pClose,"PDC", style=label.style_none, textcolor=color.rgb(180, 180, 255), size=size.small)
+    _lPDL := label.new(_xr2, pLow,  "PDL", style=label.style_none, textcolor=color.rgb(100, 255, 100), size=size.small)
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Q) EXPIRY LABEL
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+var bool _expShown = false
+if ta.change(time("D")) != 0
+    _expShown := false
+if isExpiry and not _expShown and ta.change(time("D")) != 0
+    label.new(bar_index, high + atrV, "EXPIRY DAY",
+         style=label.style_label_down, color=color.new(color.rgb(255, 100, 50), 40),
+         textcolor=color.rgb(255, 200, 100), size=size.small)
+    _expShown := true
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// R) EXHAUSTED TREND LABEL
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+plotshape(exhausted and not exhausted[1] and inMarket, title="Exhausted",
+     style=shape.xcross, location=location.abovebar,
+     color=color.rgb(255, 150, 50), text="EXHAUST", textcolor=color.rgb(255, 150, 50), size=size.tiny)
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// S) TOP TABLE — 15 COLUMNS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+var table t = table.new(position.top_center, 15, 2,
+     bgcolor=color.new(color.rgb(14, 14, 22), 10),
+     border_color=color.new(color.gray, 60), border_width=1,
+     frame_color=color.new(color.gray, 50), frame_width=1)
+
+if barstate.islast
+    color hB = color.new(color.rgb(12, 12, 22), 5)
+    color hT = color.new(color.silver, 15)
+
+    table.cell(t, 0,  0, "SESSION", text_color=hT, text_size=size.small, bgcolor=hB)
+    table.cell(t, 1,  0, "ZONE",    text_color=hT, text_size=size.small, bgcolor=hB)
+    table.cell(t, 2,  0, "5m",      text_color=hT, text_size=size.small, bgcolor=hB)
+    table.cell(t, 3,  0, "15m",     text_color=hT, text_size=size.small, bgcolor=hB)
+    table.cell(t, 4,  0, "1H",      text_color=hT, text_size=size.small, bgcolor=hB)
+    table.cell(t, 5,  0, "4H",      text_color=hT, text_size=size.small, bgcolor=hB)
+    table.cell(t, 6,  0, "HTF",     text_color=hT, text_size=size.small, bgcolor=hB)
+    table.cell(t, 7,  0, "VWAP",    text_color=hT, text_size=size.small, bgcolor=hB)
+    table.cell(t, 8,  0, "ADX",     text_color=hT, text_size=size.small, bgcolor=hB)
+    table.cell(t, 9,  0, "ATR%",    text_color=hT, text_size=size.small, bgcolor=hB)
+    table.cell(t, 10, 0, "RSI",     text_color=hT, text_size=size.small, bgcolor=hB)
+    table.cell(t, 11, 0, "EMA",     text_color=hT, text_size=size.small, bgcolor=hB)
+    table.cell(t, 12, 0, "PULLBK",  text_color=hT, text_size=size.small, bgcolor=hB)
+    table.cell(t, 13, 0, "CONF",    text_color=hT, text_size=size.small, bgcolor=hB)
+    table.cell(t, 14, 0, "GRADE",   text_color=hT, text_size=size.small, bgcolor=hB)
+
+    // Values
+    string expTag = isExpiry ? " 📅" : ""
+    table.cell(t, 0, 1, sessTxt + expTag, text_color=sessTx, text_size=size.normal, bgcolor=sessBg)
+    table.cell(t, 1, 1, zoneTxt, text_color=zoneTx, text_size=size.normal, bgcolor=zoneBg)
+
+    // TF % change colors
+    color _gT = color.rgb(80, 255, 140)
+    color _rT = color.rgb(255, 100, 100)
+    color _gB = color.rgb(0, 55, 20)
+    color _rB = color.rgb(60, 10, 10)
+    table.cell(t, 2, 1, str.tostring(chg5m, "#.#"),  text_color=chg5m >= 0 ? _gT : _rT, text_size=size.normal, bgcolor=chg5m >= 0 ? _gB : _rB)
+    table.cell(t, 3, 1, str.tostring(chg15m, "#.#"), text_color=chg15m >= 0 ? _gT : _rT, text_size=size.normal, bgcolor=chg15m >= 0 ? _gB : _rB)
+    table.cell(t, 4, 1, str.tostring(chg1h, "#.#"),  text_color=chg1h >= 0 ? _gT : _rT, text_size=size.normal, bgcolor=chg1h >= 0 ? _gB : _rB)
+    table.cell(t, 5, 1, str.tostring(chg4h, "#.#"),  text_color=chg4h >= 0 ? _gT : _rT, text_size=size.normal, bgcolor=chg4h >= 0 ? _gB : _rB)
+
+    color htfBg = htfBull ? color.rgb(0, 55, 20) : htfBear ? color.rgb(60, 10, 10) : color.rgb(25, 25, 45)
+    table.cell(t, 6, 1, htfTxt, text_color=color.white, text_size=size.normal, bgcolor=htfBg)
+    table.cell(t, 7, 1, vwapTxt, text_color=vwapTx, text_size=size.normal, bgcolor=vwapBg)
+    table.cell(t, 8, 1, adxTxt, text_color=color.white, text_size=size.normal, bgcolor=adxBg)
+    table.cell(t, 9, 1, atrTxt, text_color=atrTx, text_size=size.normal, bgcolor=atrBg)
+
+    color rsiBg = rsiV > 70 ? color.rgb(65, 10, 10) : rsiV < 30 ? color.rgb(0, 55, 20) : color.rgb(20, 30, 55)
+    table.cell(t, 10, 1, rsiTxt, text_color=color.white, text_size=size.normal, bgcolor=rsiBg)
+    table.cell(t, 11, 1, emaTxt, text_color=emaTx, text_size=size.normal, bgcolor=emaBg)
+    table.cell(t, 12, 1, pullTxt, text_color=color.white, text_size=size.normal,
+         bgcolor=pullTxt == "EXTENDED" ? color.rgb(60, 10, 10) : pullTxt == "AT EMA" ? color.rgb(0, 55, 20) : color.rgb(50, 40, 0))
+    table.cell(t, 13, 1, confTxt, text_color=color.white, text_size=size.normal, bgcolor=confBg)
+    table.cell(t, 14, 1, gradeTxt, text_color=color.white, text_size=size.normal, bgcolor=gradeBg)
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// T) LEFT TF PANEL
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+var table tfT = table.new(position.bottom_left, 3, 7,
+     bgcolor=color.new(color.rgb(14, 14, 22), 10),
+     border_color=color.new(color.gray, 70), border_width=1)
+
+if barstate.islast
+    color _hdr = color.new(color.rgb(12, 12, 22), 5)
+    table.cell(tfT, 0, 0, "TF",   text_color=color.silver, text_size=size.small, bgcolor=_hdr)
+    table.cell(tfT, 1, 0, "BUY",  text_color=color.rgb(80, 255, 140), text_size=size.small, bgcolor=_hdr)
+    table.cell(tfT, 2, 0, "SELL", text_color=color.rgb(255, 100, 100), text_size=size.small, bgcolor=_hdr)
+
+    float b4 = rsi4h
+    float s4 = 100 - rsi4h
+    float b1 = rsi1h
+    float s1 = 100 - rsi1h
+    float b15 = rsi15
+    float s15 = 100 - rsi15
+    float b5 = rsi5
+    float s5 = 100 - rsi5
+    float bC = rsiV
+    float sC = 100 - rsiV
+    color _rBg = color.new(color.rgb(14, 14, 22), 10)
+
+    // 4H
+    table.cell(tfT, 0, 1, "4H", text_color=color.silver, text_size=size.small, bgcolor=_rBg)
+    table.cell(tfT, 1, 1, str.tostring(math.round(b4)) + "%", text_color=b4 > s4 ? color.rgb(80,255,140) : color.rgb(255,100,100), text_size=size.small, bgcolor=_rBg)
+    table.cell(tfT, 2, 1, str.tostring(math.round(s4)) + "%", text_color=s4 > b4 ? color.rgb(255,100,100) : color.rgb(80,255,140), text_size=size.small, bgcolor=_rBg)
+    // 1H
+    table.cell(tfT, 0, 2, "1H", text_color=color.silver, text_size=size.small, bgcolor=_rBg)
+    table.cell(tfT, 1, 2, str.tostring(math.round(b1)) + "%", text_color=b1 > s1 ? color.rgb(80,255,140) : color.rgb(255,100,100), text_size=size.small, bgcolor=_rBg)
+    table.cell(tfT, 2, 2, str.tostring(math.round(s1)) + "%", text_color=s1 > b1 ? color.rgb(255,100,100) : color.rgb(80,255,140), text_size=size.small, bgcolor=_rBg)
+    // 15m
+    table.cell(tfT, 0, 3, "15m", text_color=color.silver, text_size=size.small, bgcolor=_rBg)
+    table.cell(tfT, 1, 3, str.tostring(math.round(b15)) + "%", text_color=b15 > s15 ? color.rgb(80,255,140) : color.rgb(255,100,100), text_size=size.small, bgcolor=_rBg)
+    table.cell(tfT, 2, 3, str.tostring(math.round(s15)) + "%", text_color=s15 > b15 ? color.rgb(255,100,100) : color.rgb(80,255,140), text_size=size.small, bgcolor=_rBg)
+    // 5m
+    table.cell(tfT, 0, 4, "5m", text_color=color.silver, text_size=size.small, bgcolor=_rBg)
+    table.cell(tfT, 1, 4, str.tostring(math.round(b5)) + "%", text_color=b5 > s5 ? color.rgb(80,255,140) : color.rgb(255,100,100), text_size=size.small, bgcolor=_rBg)
+    table.cell(tfT, 2, 4, str.tostring(math.round(s5)) + "%", text_color=s5 > b5 ? color.rgb(255,100,100) : color.rgb(80,255,140), text_size=size.small, bgcolor=_rBg)
+    // 1m
+    table.cell(tfT, 0, 5, "1m", text_color=color.silver, text_size=size.small, bgcolor=_rBg)
+    table.cell(tfT, 1, 5, str.tostring(math.round(bC)) + "%", text_color=bC > sC ? color.rgb(80,255,140) : color.rgb(255,100,100), text_size=size.small, bgcolor=_rBg)
+    table.cell(tfT, 2, 5, str.tostring(math.round(sC)) + "%", text_color=sC > bC ? color.rgb(255,100,100) : color.rgb(80,255,140), text_size=size.small, bgcolor=_rBg)
+
+    string biasTxt = isBullBias ? "▲BULL" : "▼BEAR"
+    color biasCol = isBullBias ? color.rgb(80, 255, 140) : color.rgb(255, 100, 100)
+    color biasBg = isBullBias ? color.rgb(0, 40, 15) : color.rgb(50, 10, 10)
+    table.cell(tfT, 0, 6, biasTxt, text_color=biasCol, text_size=size.small, bgcolor=biasBg)
+    table.cell(tfT, 1, 6, str.tostring(math.round(buyAvg)) + "%", text_color=color.rgb(80, 255, 140), text_size=size.small, bgcolor=biasBg)
+    table.cell(tfT, 2, 6, str.tostring(math.round(sellAvg)) + "%", text_color=color.rgb(255, 100, 100), text_size=size.small, bgcolor=biasBg)
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// U) ALERTS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+alertcondition(scalpLong,    "Scalp Long",           "SCM: Scalp Long on {{ticker}} at {{close}}")
+alertcondition(scalpShort,   "Scalp Short",          "SCM: Scalp Short on {{ticker}} at {{close}}")
+alertcondition(_lqBuySide,   "LQ Sweep Bearish",     "SCM: Bearish liquidity sweep on {{ticker}}")
+alertcondition(_lqSellSide,  "LQ Sweep Bullish",     "SCM: Bullish liquidity sweep on {{ticker}}")
+alertcondition(manipulation, "Operator Detected",     "SCM: Operator activity on {{ticker}}")
+alertcondition(exhausted,    "Trend Exhausted",       "SCM: Trend exhaustion on {{ticker}}")
+alertcondition(gapUp,        "Gap Up",                "SCM: Gap up {{ticker}}")
+alertcondition(gapDn,        "Gap Down",              "SCM: Gap down {{ticker}}")
