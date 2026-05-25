@@ -64,7 +64,7 @@ atr_expand_pct = input.float(0.35, "Min Candle/ATR Ratio for Patterns",         
 grp_liq              = "💧 Micro Liquidity"
 showLiquiditySweep   = input.bool(true, "Show Liquidity Sweeps",   group=grp_liq, display=display.none)
 liqLookback          = input.int(5,     "Sweep Lookback",          minval=3, maxval=15, group=grp_liq, display=display.none)
-liqCooldownBars      = input.int(8,     "Cooldown (bars)",         minval=1, maxval=30, group=grp_liq, display=display.none)
+liqCooldownBars      = input.int(12,     "Cooldown (bars)",         minval=1, maxval=30, group=grp_liq, display=display.none)
 liqAtrMult           = input.float(0.40,"ATR Expansion Filter",    minval=0.2, maxval=3.0, step=0.05, group=grp_liq, display=display.none)
 
 grp_pd            = "📅 Levels: Previous Day + Pivots"
@@ -684,10 +684,10 @@ plotshape(showScalpSig and scalpShort and not scalpShort[1], title="Scalp Short"
 float _lqPrevHi = ta.highest(high, liqLookback)[1]
 float _lqPrevLo = ta.lowest(low,   liqLookback)[1]
 
-bool _lqMicroBull = close > ema13 and ema13 > ema34
-bool _lqMicroBear = close < ema13 and ema13 < ema34
-bool _lqBearDisp  = close < open and bodySize > atrV * 0.45
-bool _lqBullDisp  = close > open and bodySize > atrV * 0.45
+bool _lqMicroBull = close > ema13 and ema13 > ema34 and (ema13 - ema34) / close * 100 > 0.05
+bool _lqMicroBear = close < ema13 and ema13 < ema34 and (ema34 - ema13) / close * 100 > 0.05
+bool _lqBearDisp  = close < open and bodySize > atrV * 0.55
+bool _lqBullDisp  = close > open and bodySize > atrV * 0.55
 bool _lqExpansion = totalRange > atrV * liqAtrMult
 
 // ATR-adaptive cooldown: 3× longer when ADX ranging
@@ -697,7 +697,7 @@ bool _lqCdOK       = na(_lqLastBar) or (bar_index - _lqLastBar > _lqCdLen)
 
 // ICM gate — light filter: session active + not news/avoid + not dead flat
 // Sweeps are counter-trend (stop hunts) so CONF/CLUSTER/BA don't gate them
-bool _lqGate = inTradeSession and not hardBlock and adxV >= 15
+bool _lqGate = inTradeSession and not hardBlock and adxV >= 20
 
 // Buy-side sweep (LQ↓) — trap buyers → bearish
 bool _lqBuySide = showLiquiditySweep and _lqCdOK and _lqGate and
