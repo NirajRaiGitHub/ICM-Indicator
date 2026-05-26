@@ -1,5 +1,5 @@
 //@version=6
-indicator("ICM 1.4", overlay=true,
+indicator("ICM 1.5", overlay=true,
      max_labels_count=500, max_lines_count=500, max_bars_back=5000)
 // ═══════════════════════════════════════════════════════════════════════
 // FX V3 Lite — built on FX V1 Lite (NirajRai May 2026)
@@ -235,6 +235,12 @@ float ema51   = show_e51  ? ta.ema(close, 51)  : na
 float ema100  = show_e100 ? ta.ema(close, 100) : na
 
 float emaSeparation = math.abs(ema13 - ema34) / close * 100
+
+// EMA slope — fast trend detection (catches trend before ADX)
+float _emaSlope = (ema13 - ema13[3]) / atrV
+bool _slopeBull = _emaSlope > 0.3
+bool _slopeBear = _emaSlope < -0.3
+bool _slopeTrending = _slopeBull or _slopeBear
 bool  emasTrending  = emaSeparation >= ema_sep_min
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -311,6 +317,21 @@ bool hardBlock = isAvoid or newsActive
 bool sessionOK = inTradeSession and not hardBlock
 bool canTrade  = sessionOK and volaLvl >= 1
 bool aboveVWAP = close > vwapLine
+
+// Confluence override — bypass BA BLOCK when everything aligns
+bool _htfSell = htfBear or (not htfBull and not aboveVWAP)
+bool _htfBuy  = htfBull or (not htfBear and aboveVWAP)
+bool _confOverrideSell = _htfSell and not aboveVWAP and _slopeBear and rsi15 < 45 and rsi1h < 45
+bool _confOverrideBuy  = _htfBuy  and aboveVWAP     and _slopeBull and rsi15 > 55 and rsi1h > 55
+bool _confOverride = _confOverrideSell or _confOverrideBuy
+
+// Momentum burst — fast move override
+float _momMove = math.abs(close - close[3])
+bool _momBurst = _momMove > atrV * 2.0
+var int _momBar = na
+if _momBurst
+    _momBar := bar_index
+bool _momActive = not na(_momBar) and (bar_index - _momBar <= 10)
 bool belowEma200 = close < ema200m
 bool aboveEma200 = close > ema200m
 
@@ -502,8 +523,8 @@ int readySell =
 int rawReadiness = math.max(readyBuy, readySell)
 int readiness    = biasIsAvoid ? math.min(rawReadiness, 5) : rawReadiness
 
-bool   isBuyReady  = readyBuy >= readySell and readyBuy  >= zone_min_ready and not biasIsAvoid
-bool   isSellReady = readySell > readyBuy  and readySell >= zone_min_ready and not biasIsAvoid
+bool   isBuyReady  = readyBuy >= readySell and readyBuy  >= zone_min_ready and (not biasIsAvoid or _confOverrideBuy or _momActive)
+bool   isSellReady = readySell > readyBuy  and readySell >= zone_min_ready and (not biasIsAvoid or _confOverrideSell or _momActive)
 string readyDir    = isBuyReady ? "BUY" : isSellReady ? "SELL" : "WAIT"
 
 var float _readyStartPrice = close
@@ -549,6 +570,17 @@ else if readyDir == "SELL" and aboveVWAP
 else if readyDir == "BUY" and not aboveVWAP
     _nextTxt := "VWAP BRK"
 string readyDisp   = readyDir + " " + readyTxt
+
+// Trade Score Grade
+string _grade = "AVOID"
+if _confScore >= 80 and inTradeSession and adxV >= 25 and (isBuyReady or isSellReady)
+    _grade := "A+"
+else if _confScore >= 65 and (isBuyReady or isSellReady)
+    _grade := "A"
+else if _confScore >= 50
+    _grade := "B"
+else if _confScore >= 35
+    _grade := "C"
 
 // ICM 1.2: Block zones during session OFF
 // ICM 1.4: Dynamic zone deactivation — 3/3 lower TFs opposing kills zone
@@ -746,6 +778,27 @@ if _lqSellSide
 // LQ sweep background flash
 bgcolor(_lqBuySide ? color.new(color.rgb(255,40,40), 88) : _lqSellSide ? color.new(color.rgb(0,220,120), 88) : na, title="LQ Sweep BG")
 
+// ── RSI DIVERGENCE ──
+float _divRsi = ta.rsi(close, 14)
+float _divLo1 = ta.lowest(low, 10)
+float _divLo2 = ta.lowest(low, 10)[10]
+float _divRsi1 = ta.lowest(_divRsi, 10)
+float _divRsi2 = ta.lowest(_divRsi, 10)[10]
+float _divHi1 = ta.highest(high, 10)
+float _divHi2 = ta.highest(high, 10)[10]
+float _divRsiH1 = ta.highest(_divRsi, 10)
+float _divRsiH2 = ta.highest(_divRsi, 10)[10]
+
+bool bullDiv = _divLo1 < _divLo2 and _divRsi1 > _divRsi2 and _divRsi < 40
+bool bearDiv = _divHi1 > _divHi2 and _divRsiH1 < _divRsiH2 and _divRsi > 60
+
+plotshape(bullDiv and not bullDiv[1] and inTradeSession, title="Bull Divergence",
+     style=shape.labelup, location=location.belowbar,
+     color=color.rgb(0, 200, 100), text="DIV↑", textcolor=color.white, size=size.tiny)
+plotshape(bearDiv and not bearDiv[1] and inTradeSession, title="Bear Divergence",
+     style=shape.labeldown, location=location.abovebar,
+     color=color.rgb(255, 60, 60), text="DIV↓", textcolor=color.white, size=size.tiny)
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // I) COLORS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -831,7 +884,7 @@ _bBg(float s)  => s > 5 ? color.rgb(0,90,30) : s < -5 ? color.rgb(110,18,18) : c
 _bTx(float s)  => s > 5 ? color.rgb(80,255,140) : s < -5 ? color.rgb(255,90,90) : color.gray
 _bVal(float s) => str.tostring(s, "#.0")
 
-var table bb = table.new(dashTop ? position.top_center : position.bottom_center, 20, 2,
+var table bb = table.new(dashTop ? position.top_center : position.bottom_center, 21, 2,
      bgcolor=color.new(color.rgb(20,22,38), 8),
      border_color=color.new(color.gray, 75), border_width=1,
      frame_color=color.new(color.gray, 60), frame_width=1)
@@ -875,6 +928,7 @@ if barstate.islast and showTopTable
     table.cell(bb, 17, 0, "CONF",       text_color=_G4T, text_size=size.small, bgcolor=_G4H)
     table.cell(bb, 18, 0, "READY",      text_color=_G4T, text_size=size.small, bgcolor=_G4H)
     table.cell(bb, 19, 0, "NEXT",       text_color=_G4T, text_size=size.small, bgcolor=_G4H)
+    table.cell(bb, 20, 0, "GRADE",      text_color=_G4T, text_size=size.small, bgcolor=_G4H)
 
     // ── Row 1 Values — SECTION 1 CONTEXT (cols 0-2) ─────────────────
 
@@ -924,7 +978,9 @@ if barstate.islast and showTopTable
 
     color _vwBg = aboveVWAP ? _BB_GREEN : _BB_RED
     color _vwTx = aboveVWAP ? color.rgb(80,240,130) : color.rgb(245,90,90)
-    table.cell(bb, 9, 1, aboveVWAP ? "ABOVE" : "BELOW", text_color=_vwTx, text_size=size.normal, bgcolor=_vwBg)
+    float _vwDist = math.abs(close - vwapLine)
+    string _vwTxt = (aboveVWAP ? "↑ " : "↓ ") + str.tostring(_vwDist, "#.#")
+    table.cell(bb, 9, 1, _vwTxt, text_color=_vwTx, text_size=size.normal, bgcolor=_vwBg)
 
     table.cell(bb, 10, 1, "", text_color=_SEP, text_size=size.tiny, bgcolor=_SEP)
 
@@ -967,6 +1023,10 @@ if barstate.islast and showTopTable
     color _nxBg = _nextTxt == "GO" ? color.rgb(0,40,20) : color.rgb(25,25,35)
     color _nxTx = _nextTxt == "GO" ? color.rgb(80,240,130) : color.rgb(140,145,170)
     table.cell(bb, 19, 1, _nextTxt, text_color=_nxTx, text_size=size.small, bgcolor=_nxBg)
+
+    // GRADE — final trade quality
+    color _grBg = _grade == "A+" ? color.rgb(0,70,30) : _grade == "A" ? color.rgb(0,55,20) : _grade == "B" ? color.rgb(50,40,0) : _grade == "C" ? color.rgb(60,30,0) : color.rgb(65,10,10)
+    table.cell(bb, 20, 1, _grade, text_color=color.white, text_size=size.normal, bgcolor=_grBg)
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // K) VWAP + EMA PLOTS
@@ -1033,7 +1093,8 @@ if barstate.islast and showWeisTable
     table.cell(weisT, 0, 4, "5m", text_color=_wHdrTx, text_size=size.small, bgcolor=_wHdrBg)
     table.cell(weisT, 1, 4, str.tostring(wbp5m) + "%",      text_color=_wCellTx(wbp5m),      text_size=size.normal, bgcolor=_wCellBg(wbp5m))
     table.cell(weisT, 2, 4, str.tostring(100-wbp5m) + "%",  text_color=_wCellTx(100-wbp5m),  text_size=size.normal, bgcolor=_wCellBg(100-wbp5m))
-    table.cell(weisT, 0, 5, "1m", text_color=_wHdrTx, text_size=size.small, bgcolor=_wHdrBg)
+    bool _1mCounter = (wbp1m > 60 and wbp1h < 40) or (wbp1m < 40 and wbp1h > 60)
+    table.cell(weisT, 0, 5, _1mCounter ? "1m⚡" : "1m", text_color=_1mCounter ? color.rgb(255,200,50) : _wHdrTx, text_size=size.small, bgcolor=_wHdrBg)
     table.cell(weisT, 1, 5, str.tostring(wbp1m) + "%",      text_color=_wCellTx(wbp1m),      text_size=size.normal, bgcolor=_wCellBg(wbp1m))
     table.cell(weisT, 2, 5, str.tostring(100-wbp1m) + "%",  text_color=_wCellTx(100-wbp1m),  text_size=size.normal, bgcolor=_wCellBg(100-wbp1m))
     int _totalBuy  = int(math.round(wbp4h * 0.30 + wbp1h * 0.25 + wbp15m * 0.22 + wbp5m * 0.15 + wbp1m * 0.08))
@@ -1422,3 +1483,6 @@ alertcondition(_expandUp, "EMA Expand UP", "EMAs expanding bullish on {{ticker}}
 alertcondition(_expandDn, "EMA Expand DN", "EMAs expanding bearish on {{ticker}}")
 alertcondition(_lqBuySide,  "LQ Sweep Bearish", "Bearish liquidity sweep on {{ticker}} at {{close}}")
 alertcondition(_lqSellSide, "LQ Sweep Bullish", "Bullish liquidity sweep on {{ticker}} at {{close}}")
+alertcondition(bullDiv,     "RSI Bull Divergence", "Bullish RSI divergence on {{ticker}}")
+alertcondition(bearDiv,     "RSI Bear Divergence", "Bearish RSI divergence on {{ticker}}")
+alertcondition(_momBurst,   "Momentum Burst", "Momentum burst on {{ticker}} at {{close}}")
