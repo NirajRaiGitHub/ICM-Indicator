@@ -332,6 +332,37 @@ var int _momBar = na
 if _momBurst
     _momBar := bar_index
 bool _momActive = not na(_momBar) and (bar_index - _momBar <= 10)
+// ── FIB RETRACEMENT STRENGTH ──
+// Detect swing high/low using 5m-equivalent pivots (5-bar on 5m, 25-bar on 1m)
+int _swingLen = timeframe.in_seconds() <= 60 ? 25 : timeframe.in_seconds() <= 300 ? 5 : 3
+float _swHi = ta.pivothigh(high, _swingLen, _swingLen)
+float _swLo = ta.pivotlow(low, _swingLen, _swingLen)
+
+var float _lastSwHi = na
+var float _lastSwLo = na
+if not na(_swHi)
+    _lastSwHi := _swHi
+if not na(_swLo)
+    _lastSwLo := _swLo
+
+float _swRange = nz(_lastSwHi) - nz(_lastSwLo)
+float _retracePct = _swRange > 0 ? (close - nz(_lastSwLo)) / _swRange : 0.5
+
+// In downtrend: how much price retraced UP from swing low
+// In uptrend: how much price retraced DOWN from swing high
+bool _isBearTrend = ema13 < ema34
+float _fibRetrace = _isBearTrend ? _retracePct : (1.0 - _retracePct)
+
+string _fibTxt = _fibRetrace <= 0.236 ? "VERY STRONG" :
+     _fibRetrace <= 0.382 ? "STRONG" :
+     _fibRetrace <= 0.500 ? "BALANCED" :
+     _fibRetrace <= 0.618 ? "WEAK" : "EXHAUST"
+
+int _fibGradeAdj = _fibRetrace <= 0.236 ? 2 :
+     _fibRetrace <= 0.382 ? 1 :
+     _fibRetrace <= 0.500 ? 0 :
+     _fibRetrace <= 0.618 ? -1 : -2
+     
 bool belowEma200 = close < ema200m
 bool aboveEma200 = close > ema200m
 
@@ -572,14 +603,27 @@ else if readyDir == "BUY" and not aboveVWAP
 string readyDisp   = readyDir + " " + readyTxt
 
 // Trade Score Grade
-string _grade = "AVOID"
-if _confScore >= 80 and inTradeSession and adxV >= 25 and (isBuyReady or isSellReady)
-    _grade := "A+"
-else if _confScore >= 65 and (isBuyReady or isSellReady)
-    _grade := "A"
+// Trade Score Grade (with Fib Retracement Strength)
+int _gradeScore = 0
+if _confScore >= 80
+    _gradeScore := 4
+else if _confScore >= 65
+    _gradeScore := 3
 else if _confScore >= 50
-    _grade := "B"
+    _gradeScore := 2
 else if _confScore >= 35
+    _gradeScore := 1
+
+_gradeScore := math.max(0, math.min(5, _gradeScore + _fibGradeAdj))
+
+string _grade = "AVOID"
+if _gradeScore >= 4 and inTradeSession and adxV >= 25 and (isBuyReady or isSellReady)
+    _grade := "A+"
+else if _gradeScore >= 3 and (isBuyReady or isSellReady)
+    _grade := "A"
+else if _gradeScore >= 2
+    _grade := "B"
+else if _gradeScore >= 1
     _grade := "C"
 
 // ICM 1.2: Block zones during session OFF
@@ -884,7 +928,7 @@ _bBg(float s)  => s > 5 ? color.rgb(0,90,30) : s < -5 ? color.rgb(110,18,18) : c
 _bTx(float s)  => s > 5 ? color.rgb(80,255,140) : s < -5 ? color.rgb(255,90,90) : color.gray
 _bVal(float s) => str.tostring(s, "#.0")
 
-var table bb = table.new(dashTop ? position.top_center : position.bottom_center, 21, 2,
+var table bb = table.new(dashTop ? position.top_center : position.bottom_center, 19, 2,
      bgcolor=color.new(color.rgb(20,22,38), 8),
      border_color=color.new(color.gray, 75), border_width=1,
      frame_color=color.new(color.gray, 60), frame_width=1)
@@ -926,9 +970,7 @@ if barstate.islast and showTopTable
     table.cell(bb, 15, 0, "EMA",        text_color=_G4T, text_size=size.small, bgcolor=_G4H)
     table.cell(bb, 16, 0, "PULLBK",     text_color=_G4T, text_size=size.small, bgcolor=_G4H)
     table.cell(bb, 17, 0, "CONF",       text_color=_G4T, text_size=size.small, bgcolor=_G4H)
-    table.cell(bb, 18, 0, "READY",      text_color=_G4T, text_size=size.small, bgcolor=_G4H)
-    table.cell(bb, 19, 0, "NEXT",       text_color=_G4T, text_size=size.small, bgcolor=_G4H)
-    table.cell(bb, 20, 0, "GRADE",      text_color=_G4T, text_size=size.small, bgcolor=_G4H)
+    table.cell(bb, 18, 0, "GRADE",      text_color=_G4T, text_size=size.small, bgcolor=_G4H)
 
     // ── Row 1 Values — SECTION 1 CONTEXT (cols 0-2) ─────────────────
 
@@ -1014,19 +1056,9 @@ if barstate.islast and showTopTable
     color _snTx = _confSmooth >= 65 ? color.rgb(80,240,130) : _confSmooth >= 40 ? color.rgb(245,205,70) : color.rgb(245,90,90)
     table.cell(bb, 17, 1, str.tostring(int(_confSmooth)) + "% " + _confTier, text_color=_snTx, text_size=size.normal, bgcolor=_snBg)
 
-    // READY — Final Decision Engine
-    color _rdBg = readyDecision == "AVOID" ? color.rgb(80,0,0) : readyDecision == "TRAP" ? color.rgb(100,30,0) : readyDecision == "LOW CONF" ? _BB_GRAY : readyDecision == "▶ SELL" ? _BB_RED : readyDecision == "▶ BUY" ? _BB_GREEN : readyDecision == "△ SELL" ? _BB_ORANGE : readyDecision == "△ BUY" ? _BB_YELLOW : _BB_GRAY
-    color _rdTx = readyDecision == "AVOID" ? color.rgb(255,60,60) : readyDecision == "TRAP" ? color.rgb(255,120,40) : readyDecision == "LOW CONF" ? color.rgb(120,125,160) : readyDecision == "▶ SELL" ? color.rgb(245,90,90) : readyDecision == "▶ BUY" ? color.rgb(80,240,130) : readyDecision == "△ SELL" ? color.rgb(245,155,55) : readyDecision == "△ BUY" ? color.rgb(245,205,70) : color.rgb(120,125,160)
-    table.cell(bb, 18, 1, readyDecision, text_color=_rdTx, text_size=size.normal, bgcolor=_rdBg)
-
-    // NEXT — what's missing (tiny muted text)
-    color _nxBg = _nextTxt == "GO" ? color.rgb(0,40,20) : color.rgb(25,25,35)
-    color _nxTx = _nextTxt == "GO" ? color.rgb(80,240,130) : color.rgb(140,145,170)
-    table.cell(bb, 19, 1, _nextTxt, text_color=_nxTx, text_size=size.small, bgcolor=_nxBg)
-
-    // GRADE — final trade quality
+  // GRADE — final column
     color _grBg = _grade == "A+" ? color.rgb(0,70,30) : _grade == "A" ? color.rgb(0,55,20) : _grade == "B" ? color.rgb(50,40,0) : _grade == "C" ? color.rgb(60,30,0) : color.rgb(65,10,10)
-    table.cell(bb, 20, 1, _grade, text_color=color.white, text_size=size.normal, bgcolor=_grBg)
+    table.cell(bb, 18, 1, _grade, text_color=color.white, text_size=size.normal, bgcolor=_grBg)
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // K) VWAP + EMA PLOTS
