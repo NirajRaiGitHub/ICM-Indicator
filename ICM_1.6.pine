@@ -1,5 +1,5 @@
 //@version=6
-indicator("ICM 1.5", overlay=true,
+indicator("ICM 1.6", overlay=true,
      max_labels_count=500, max_lines_count=500, max_bars_back=5000)
 // ═══════════════════════════════════════════════════════════════════════
 // FX V3 Lite — built on FX V1 Lite (NirajRai May 2026)
@@ -16,6 +16,9 @@ transpTrade   = input.int(95,     "Trade Tint Transparency",            group="�
 transpAvoid   = input.int(93,     "Avoid Tint Transparency",            group="🎨 Display", display=display.none, minval=0, maxval=100)
 transpMorning = input.int(96,     "Morning Tint Transparency",          group="🎨 Display", display=display.none, minval=0, maxval=100)
 showBands     = input.bool(true,  "Show Pro Volatility Bands",          group="🎨 Display", display=display.none)
+showVP        = input.bool(true,  "Show Volume Profile",                 group="🎨 Display", display=display.none)
+vpBinCount    = input.int(40,     "VP Bins",                             group="🎨 Display", display=display.none, minval=20, maxval=80)
+vpBarWidth    = input.int(15,     "VP Bar Width",                        group="🎨 Display", display=display.none, minval=5, maxval=40)
 showScalpSig  = input.bool(true,  "Show Scalp Long/Short Arrows",       group="🎨 Display", display=display.none)
 dashTop       = input.bool(false, "Dashboard: Top (uncheck = Bottom)",  group="🎨 Display", display=display.none)
 transpBand    = input.int(96,     "Band Transparency",                  group="🎨 Display", display=display.none, minval=0, maxval=100)
@@ -323,7 +326,10 @@ bool _htfSell = htfBear or (not htfBull and not aboveVWAP)
 bool _htfBuy  = htfBull or (not htfBear and aboveVWAP)
 bool _confOverrideSell = _htfSell and not aboveVWAP and _slopeBear and rsi15 < 45 and rsi1h < 45
 bool _confOverrideBuy  = _htfBuy  and aboveVWAP     and _slopeBull and rsi15 > 55 and rsi1h > 55
-bool _confOverride = _confOverrideSell or _confOverrideBuy
+// Extreme TF bias override (4H > 80% one direction = force through BA BLOCK)
+bool _extremeSell = wbp4h < 20
+bool _extremeBuy  = wbp4h > 80
+bool _confOverride = _confOverrideSell or _confOverrideBuy or _extremeSell or _extremeBuy
 
 // Momentum burst — fast move override
 float _momMove = math.abs(close - close[3])
@@ -509,6 +515,9 @@ if adxV < 15
     _confScore := math.min(_confScore, 55)
 else if adxV < 20
     _confScore := math.min(_confScore, 70)
+// Slope trending but ADX weak → boost CONF (ADX lag compensation)
+if _slopeTrending and adxV < 20
+    _confScore := math.min(_confScore + 15, 75)
 // ICM 1.2: Smart session dampening — less aggressive when ADX trending
 // ICM 1.2: Smart session dampening — less aggressive when ADX trending
 bool _sessOff = not inTradeSession
@@ -603,7 +612,7 @@ else if readyDir == "BUY" and not aboveVWAP
 string readyDisp   = readyDir + " " + readyTxt
 
 // Trade Score Grade
-// Trade Score Grade (with Fib Retracement Strength)
+// Trade Score Grade (with Fib Retracement Strength + session weight + round level)
 int _gradeScore = 0
 if _confScore >= 80
     _gradeScore := 4
@@ -615,6 +624,15 @@ else if _confScore >= 35
     _gradeScore := 1
 
 _gradeScore := math.max(0, math.min(5, _gradeScore + _fibGradeAdj))
+// Session weight: active session boosts, off session penalizes
+if inTradeSession
+    _gradeScore := math.min(5, _gradeScore + 1)
+else
+    _gradeScore := math.max(0, _gradeScore - 1)
+
+// Round number detection (psychological levels: x00, x50)
+float _roundMod = close % 100
+bool _atRoundLevel = _roundMod < 3 or _roundMod > 97 or (math.abs(_roundMod - 50) < 3)
 
 string _grade = "AVOID"
 if _gradeScore >= 4 and inTradeSession and adxV >= 25 and (isBuyReady or isSellReady)
@@ -824,17 +842,26 @@ bgcolor(_lqBuySide ? color.new(color.rgb(255,40,40), 88) : _lqSellSide ? color.n
 
 // ── RSI DIVERGENCE ──
 float _divRsi = ta.rsi(close, 14)
-float _divLo1 = ta.lowest(low, 10)
-float _divLo2 = ta.lowest(low, 10)[10]
-float _divRsi1 = ta.lowest(_divRsi, 10)
-float _divRsi2 = ta.lowest(_divRsi, 10)[10]
-float _divHi1 = ta.highest(high, 10)
-float _divHi2 = ta.highest(high, 10)[10]
-float _divRsiH1 = ta.highest(_divRsi, 10)
-float _divRsiH2 = ta.highest(_divRsi, 10)[10]
+int _divLen = 20
+float _divLo1 = ta.lowest(low, _divLen)
+float _divLo2 = ta.lowest(low, _divLen)[_divLen]
+float _divRsi1 = ta.lowest(_divRsi, _divLen)
+float _divRsi2 = ta.lowest(_divRsi, _divLen)[_divLen]
+float _divHi1 = ta.highest(high, _divLen)
+float _divHi2 = ta.highest(high, _divLen)[_divLen]
+float _divRsiH1 = ta.highest(_divRsi, _divLen)
+float _divRsiH2 = ta.highest(_divRsi, _divLen)[_divLen]
 
-bool bullDiv = _divLo1 < _divLo2 and _divRsi1 > _divRsi2 and _divRsi < 40
-bool bearDiv = _divHi1 > _divHi2 and _divRsiH1 < _divRsiH2 and _divRsi > 60
+bool _rawBullDiv = _divLo1 < _divLo2 and _divRsi1 > _divRsi2 and _divRsi < 40
+bool _rawBearDiv = _divHi1 > _divHi2 and _divRsiH1 < _divRsiH2 and _divRsi > 60
+
+// Cooldown — 15 bars between DIV signals
+var int _divLastBar = na
+bool _divCdOK = na(_divLastBar) or (bar_index - _divLastBar > 15)
+bool bullDiv = _rawBullDiv and _divCdOK
+bool bearDiv = _rawBearDiv and _divCdOK
+if (bullDiv and not bullDiv[1]) or (bearDiv and not bearDiv[1])
+    _divLastBar := bar_index
 
 plotshape(bullDiv and not bullDiv[1] and inTradeSession, title="Bull Divergence",
      style=shape.labelup, location=location.belowbar,
@@ -1510,11 +1537,55 @@ alertcondition(scalpShort and not scalpShort[1], "Scalp Short Entry", "SCALP SHO
 alertcondition(momentumFlipUp, "Momentum Flip UP", "5m RSI crossed above 50 on {{ticker}}")
 alertcondition(momentumFlipDn, "Momentum Flip DN", "5m RSI crossed below 50 on {{ticker}}")
 alertcondition(_readyStress, "READY Stress", "READY signal under stress on {{ticker}}")
-alertcondition(breakoutUp or breakoutDn, "Zone Breakout", "Zone breakout on {{ticker}} at {{close}}")
-alertcondition(_expandUp, "EMA Expand UP", "EMAs expanding bullish on {{ticker}}")
-alertcondition(_expandDn, "EMA Expand DN", "EMAs expanding bearish on {{ticker}}")
-alertcondition(_lqBuySide,  "LQ Sweep Bearish", "Bearish liquidity sweep on {{ticker}} at {{close}}")
-alertcondition(_lqSellSide, "LQ Sweep Bullish", "Bullish liquidity sweep on {{ticker}} at {{close}}")
-alertcondition(bullDiv,     "RSI Bull Divergence", "Bullish RSI divergence on {{ticker}}")
-alertcondition(bearDiv,     "RSI Bear Divergence", "Bearish RSI divergence on {{ticker}}")
-alertcondition(_momBurst,   "Momentum Burst", "Momentum burst on {{ticker}} at {{close}}")
+
+// ── VP: POC / VAH / VAL LINES (clean, no boxes) ──
+var float[] _vpVol = array.new_float(vpBinCount, 0.0)
+var float _vpHi = na
+var float _vpLo = na
+bool _hasVP = not na(volume) and volume > 0
+
+if ta.change(time("D")) != 0
+    array.fill(_vpVol, 0.0)
+    _vpHi := high
+    _vpLo := low
+else
+    _vpHi := math.max(nz(_vpHi, high), high)
+    _vpLo := math.min(nz(_vpLo, low), low)
+
+float _vpStep = _vpHi != _vpLo ? (_vpHi - _vpLo) / vpBinCount : syminfo.mintick
+int _vpBin = _vpStep > 0 ? math.min(int((close - nz(_vpLo, close)) / _vpStep), vpBinCount - 1) : 0
+if _vpBin >= 0 and _vpBin < vpBinCount and _hasVP
+    array.set(_vpVol, _vpBin, array.get(_vpVol, _vpBin) + nz(volume, 0))
+
+int _vpPocIdx = 0
+float _vpMax = 0.0
+for i = 0 to vpBinCount - 1
+    float v = array.get(_vpVol, i)
+    if v > _vpMax
+        _vpMax := v
+        _vpPocIdx := i
+
+float _vpTotal = array.sum(_vpVol)
+float _vpTarget = _vpTotal * 0.70
+float _vpAccum = array.get(_vpVol, _vpPocIdx)
+int _vpUp = _vpPocIdx
+int _vpDn = _vpPocIdx
+while _vpAccum < _vpTarget and (_vpUp < vpBinCount - 1 or _vpDn > 0)
+    float vA = _vpUp < vpBinCount - 1 ? array.get(_vpVol, _vpUp + 1) : 0.0
+    float vB = _vpDn > 0 ? array.get(_vpVol, _vpDn - 1) : 0.0
+    if vA >= vB and _vpUp < vpBinCount - 1
+        _vpUp += 1
+        _vpAccum += vA
+    else if _vpDn > 0
+        _vpDn -= 1
+        _vpAccum += vB
+    else
+        break
+
+float vpPOC = nz(_vpLo) + (_vpPocIdx + 0.5) * _vpStep
+float vpVAH = nz(_vpLo) + (_vpUp + 1) * _vpStep
+float vpVAL = nz(_vpLo) + _vpDn * _vpStep
+
+plot(showVP and _hasVP ? vpPOC : na, "POC", color=color.new(color.rgb(255, 200, 50), 20), linewidth=2, style=plot.style_stepline)
+plot(showVP and _hasVP ? vpVAH : na, "VAH", color=color.new(color.rgb(0, 180, 255), 35), linewidth=1, style=plot.style_stepline)
+plot(showVP and _hasVP ? vpVAL : na, "VAL", color=color.new(color.rgb(0, 180, 255), 35), linewidth=1, style=plot.style_stepline)
