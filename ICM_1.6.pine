@@ -184,13 +184,13 @@ bool show_bg       = showBgTint and tf_scalp
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 string tz       = "GMT+5:30"
 bool isIndia    = not na(time(timeframe.period, "0930-1130:1234567", tz))
-bool isLondon   = not na(time(timeframe.period, "1330-1530:1234567", tz))
-bool isUSKill   = not na(time(timeframe.period, "1830-2130:1234567", tz))
+bool isLondon   = not na(time(timeframe.period, "1330-1730:1234567", tz))
+bool isUSKill   = not na(time(timeframe.period, "1830-2300:1234567", tz))
 bool isTokyo    = not na(time(timeframe.period, "0530-1130:1234567", tz))
 bool isShanghai = not na(time(timeframe.period, "0700-1230:1234567", tz))
 bool isAsiaCore = isTokyo and isShanghai
-bool isAvoid    = not na(time(timeframe.period, "1200-1300:1234567", tz)) or
-                  not na(time(timeframe.period, "1645-1800:1234567", tz))
+bool isAvoid    = not na(time(timeframe.period, "1200-1330:1234567", tz)) or
+                  not na(time(timeframe.period, "1730-1830:1234567", tz))
 
 int nowMins = hour(timenow, tz) * 60 + minute(timenow, tz)
 int nA = 19 * 60
@@ -202,6 +202,7 @@ dB := dB <= 0 ? dB + 1440 : dB
 
 bool newsActive     = dA <= 30 or dB <= 30
 int  newsMin        = math.min(dA, dB)
+
 bool inTradeSession = isAsiaCore or isLondon or isUSKill
 bool isHighVolSess  = isLondon or isUSKill
 
@@ -316,7 +317,7 @@ float volScore = atrPct + volRatio * 0.6
 int   volaLvl  = volScore >= 3.2 ? 3 : volScore >= 2.4 ? 2 : volScore >= 1.6 ? 1 : 0
 
 
-bool hardBlock = isAvoid or newsActive
+bool hardBlock = isAvoid or newsActive or not inTradeSession
 bool sessionOK = inTradeSession and not hardBlock
 bool canTrade  = sessionOK and volaLvl >= 1
 bool aboveVWAP = close > vwapLine
@@ -435,7 +436,7 @@ string sessTxt =
      isAsiaCore ? "ASIA CORE" :
      isShanghai ? "SHANGHAI"  :
      isTokyo    ? "TOKYO"     :
-     isIndia    ? "INDIA"     : "OFF"
+     isIndia    ? "INDIA"     : "AVOIDE"
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // H) READINESS SCORE + ZONE ENGINE + CANDLE PATTERNS
@@ -635,7 +636,7 @@ float _roundMod = close % 100
 bool _atRoundLevel = _roundMod < 3 or _roundMod > 97 or (math.abs(_roundMod - 50) < 3)
 
 string _grade = "AVOID"
-if _gradeScore >= 4 and inTradeSession and adxV >= 25 and (isBuyReady or isSellReady)
+if _gradeScore >= 4 and inTradeSession and adxV >= 25 and (isBuyReady or isSellReady or _extremeSell or _extremeBuy)
     _grade := "A+"
 else if _gradeScore >= 3 and (isBuyReady or isSellReady)
     _grade := "A"
