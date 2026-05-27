@@ -169,14 +169,15 @@ string goldImpact = na
 bool goldBullish  = false
 bool goldBearish  = false
 
+// Use HTF direction for BIAS (more reliable, matches HTF column)
 if isPositive
-    goldBullish := trendBull
-    goldBearish := trendBear
-    goldImpact  := trendBull ? "↑ GOLD BULL" : trendBear ? "↓ GOLD BEAR" : "→ NEUTRAL"
+    goldBullish := htfBull
+    goldBearish := htfBear
+    goldImpact  := htfBull ? "↑ GOLD BULL" : htfBear ? "↓ GOLD BEAR" : "→ NEUTRAL"
 else
-    goldBullish := trendBear
-    goldBearish := trendBull
-    goldImpact  := trendBull ? "↓ GOLD BEAR" : trendBear ? "↑ GOLD BULL" : "→ NEUTRAL"
+    goldBullish := htfBear
+    goldBearish := htfBull
+    goldImpact  := htfBull ? "↓ GOLD BEAR" : htfBear ? "↑ GOLD BULL" : "→ NEUTRAL"
 
 //━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // D) SESSIONS
