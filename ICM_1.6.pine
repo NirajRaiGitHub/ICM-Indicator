@@ -16,7 +16,7 @@ transpTrade   = input.int(95,     "Trade Tint Transparency",            group="�
 transpAvoid   = input.int(93,     "Avoid Tint Transparency",            group="🎨 Display", display=display.none, minval=0, maxval=100)
 transpMorning = input.int(96,     "Morning Tint Transparency",          group="🎨 Display", display=display.none, minval=0, maxval=100)
 showBands     = input.bool(true,  "Show Pro Volatility Bands",          group="🎨 Display", display=display.none)
-showVP        = input.bool(true,  "Show Volume Profile",                 group="🎨 Display", display=display.none)
+showVP        = input.bool(false, "Show Volume Profile",                 group="🎨 Display", display=display.none)
 vpBinCount    = input.int(40,     "VP Bins",                             group="🎨 Display", display=display.none, minval=20, maxval=80)
 vpBarWidth    = input.int(15,     "VP Bar Width",                        group="🎨 Display", display=display.none, minval=5, maxval=40)
 showScalpSig  = input.bool(true,  "Show Scalp Long/Short Arrows",       group="🎨 Display", display=display.none)
@@ -261,6 +261,9 @@ float  _htfGap = math.abs(htfEma13 - htfEma34) / htfEma34 * 100
 bool   htfTransUp = htfBear and _htfGap < 0.15
 bool   htfTransDn = htfBull and _htfGap < 0.15
 string htfBias = htfBull ? (htfTransDn ? "HTF ⚠DN" : "HTF UP") : htfBear ? (htfTransUp ? "HTF ⚠UP" : "HTF DN") : "HTF RNG"
+// ICM 1.6.1: Effective HTF — transition states act as partial bull/bear for zones & grades
+bool _htfBullEff = (htfBull and not htfTransDn) or htfTransUp
+bool _htfBearEff = (htfBear and not htfTransUp) or htfTransDn
 
 float rsi5  = request.security(syminfo.tickerid, "5",   ta.rsi(close, rsi_len), lookahead=barmerge.lookahead_off)
 float rsi15 = request.security(syminfo.tickerid, "15",  ta.rsi(close, rsi_len), lookahead=barmerge.lookahead_off)
@@ -326,8 +329,8 @@ bool canTrade  = sessionOK and volaLvl >= 1
 bool aboveVWAP = close > vwapLine
 
 // Confluence override — bypass BA BLOCK when everything aligns
-bool _htfSell = htfBear or (not htfBull and not aboveVWAP)
-bool _htfBuy  = htfBull or (not htfBear and aboveVWAP)
+bool _htfSell = _htfBearEff or (not _htfBullEff and not aboveVWAP)
+bool _htfBuy  = _htfBullEff or (not _htfBearEff and aboveVWAP)
 bool _confOverrideSell = _htfSell and not aboveVWAP and _slopeBear and rsi15 < 45 and rsi1h < 45
 bool _confOverrideBuy  = _htfBuy  and aboveVWAP     and _slopeBull and rsi15 > 55 and rsi1h > 55
 // Extreme TF bias override (4H > 80% one direction = force through BA BLOCK)
@@ -413,8 +416,8 @@ bool  rsi5above50   = rsi5 > 50 and rsi5[1] <= 50
 bool  rsi5below50   = rsi5 < 50 and rsi5[1] >= 50
 bool  momentumFlipUp = rsi5above50 and rsi1h > 50
 bool  momentumFlipDn = rsi5below50 and rsi1h < 50
-bool  trendBull      = htfBull and biasAlignScore >= 3
-bool  trendBear      = htfBear and biasAlignScore <= 1
+bool  trendBull      = _htfBullEff and biasAlignScore >= 3
+bool  trendBear      = _htfBearEff and biasAlignScore <= 1
 
 bool _rawScalpLong = inTradeSession and not hardBlock and trendBull and rsiMain < 75 and s5 > 0 and
      (ema13pullLong or momentumFlipUp or (pullbackTxt == "PULLBACK" and rsiMain > 40 and rsiMain < 55))
@@ -541,7 +544,7 @@ bool weisExhaustion = rsiMain < 35 and wbp15m < 20
 bool weisOverbought = rsiMain > 65 and wbp15m > 80
 
 int readyBuy =
-     (htfBull        ? 1 : 0) +
+     (_htfBullEff     ? 1 : 0) +
      (biasAlignScore >= 3 ? 1 : 0) +
      (atSupport      ? 1 : 0) +
      (rsiMain >= 25 and rsiMain <= 45 ? 1 : 0) +
@@ -553,7 +556,7 @@ int readyBuy =
      (adxTrending    ? 1 : 0)
 
 int readySell =
-     (htfBear        ? 1 : 0) +
+     (_htfBearEff     ? 1 : 0) +
      (biasAlignScore <= 1 ? 1 : 0) +
      (atResistance   ? 1 : 0) +
      (rsiMain >= 55 and rsiMain <= 75 ? 1 : 0) +
@@ -601,7 +604,7 @@ else if readyDecision == "AVOID" or readyDecision == "TRAP"
     _nextTxt := "—"
 else if not (atSupport or atResistance)
     _nextTxt := "LEVEL"
-else if not htfBull and not htfBear
+else if not _htfBullEff and not _htfBearEff
     _nextTxt := "HTF ALIGN"
 else if not adxTrending
     _nextTxt := "ADX >20"
@@ -815,10 +818,10 @@ if _lqBuySide or _lqSellSide
     _lqLastBar := bar_index
 
 // ICM 1.4: Trend-aware LQ labels
-bool _lqSellTrend   = _lqBuySide  and htfBear
-bool _lqSellCounter = _lqBuySide  and not htfBear
-bool _lqBuyTrend    = _lqSellSide and htfBull
-bool _lqBuyCounter  = _lqSellSide and not htfBull
+bool _lqSellTrend   = _lqBuySide  and _htfBearEff
+bool _lqSellCounter = _lqBuySide  and not _htfBearEff
+bool _lqBuyTrend    = _lqSellSide and _htfBullEff
+bool _lqBuyCounter  = _lqSellSide and not _htfBullEff
 
 plotshape(_lqSellTrend, title="LQ Sell (trend)",
      style=shape.flag, location=location.abovebar,
@@ -1045,8 +1048,8 @@ if barstate.islast and showTopTable
     table.cell(bb, 6, 1, _bVal(s1h), text_color=_bTx(s1h), text_size=size.normal, bgcolor=_bBg(s1h))
     table.cell(bb, 7, 1, _bVal(s4h), text_color=_bTx(s4h), text_size=size.normal, bgcolor=_bBg(s4h))
 
-    color _htfBg = htfBull ? _BB_GREEN : htfBear ? _BB_RED : _BB_GRAY
-    color _htfTx = htfBull ? color.rgb(80,240,130) : htfBear ? color.rgb(245,90,90) : color.rgb(120,125,160)
+    color _htfBg = htfTransUp or htfTransDn ? color.rgb(50,40,0) : htfBull ? _BB_GREEN : htfBear ? _BB_RED : _BB_GRAY
+    color _htfTx = htfTransUp or htfTransDn ? color.rgb(245,205,70) : htfBull ? color.rgb(80,240,130) : htfBear ? color.rgb(245,90,90) : color.rgb(120,125,160)
     table.cell(bb, 8, 1, htfBias, text_color=_htfTx, text_size=size.normal, bgcolor=_htfBg)
 
     color _vwBg = aboveVWAP ? _BB_GREEN : _BB_RED
@@ -1095,21 +1098,21 @@ if barstate.islast and showTopTable
 // K) VWAP + EMA PLOTS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 plot(showVWAP ? vwapLine : na, title="VWAP",
-     color=color.new(color.white, 10), linewidth=vwapWidth, style=plot.style_linebr)
+     color=color.new(color.white, 10), linewidth=vwapWidth, style=plot.style_linebr, display=display.pane)
 
 
 plot(show_e13 ? ema13 : na,   title="EMA 13",
-     color=color.new(color.rgb(0, 200, 80),   0), linewidth=2, style=plot.style_linebr)
+     color=color.new(color.rgb(0, 200, 80),   0), linewidth=2, style=plot.style_linebr, display=display.pane)
 plot(show_e34 ? ema34 : na,   title="EMA 34",
-     color=color.new(color.rgb(180, 60, 255), 0), linewidth=2, style=plot.style_linebr)
+     color=color.new(color.rgb(180, 60, 255), 0), linewidth=2, style=plot.style_linebr, display=display.pane)
 plot(show_e200 and bar_index % 2 == 0 ? ema200m : na, title="EMA 200",
-     color=color.new(color.rgb(255, 40, 40),  0), linewidth=2, style=plot.style_linebr)
+     color=color.new(color.rgb(255, 40, 40),  0), linewidth=2, style=plot.style_linebr, display=display.pane)
 
-plot(show_e9   ? ema9   : na, title="EMA 9",   color=color.new(color.rgb(0, 230, 80),   0), linewidth=1, style=plot.style_line)
-plot(show_e21  ? ema21  : na, title="EMA 21",  color=color.new(color.rgb(200, 100, 255),0), linewidth=1, style=plot.style_line)
-plot(show_e51  ? ema51  : na, title="EMA 51",  color=color.new(color.rgb(40, 130, 255), 0), linewidth=1, style=plot.style_line)
+plot(show_e9   ? ema9   : na, title="EMA 9",   color=color.new(color.rgb(0, 230, 80),   0), linewidth=1, style=plot.style_line, display=display.pane)
+plot(show_e21  ? ema21  : na, title="EMA 21",  color=color.new(color.rgb(200, 100, 255),0), linewidth=1, style=plot.style_line, display=display.pane)
+plot(show_e51  ? ema51  : na, title="EMA 51",  color=color.new(color.rgb(40, 130, 255), 0), linewidth=1, style=plot.style_line, display=display.pane)
 
-plot(show_e100 ? ema100 : na, title="EMA 100", color=color.new(color.rgb(255, 160, 0),  0), linewidth=1, style=plot.style_line)
+plot(show_e100 ? ema100 : na, title="EMA 100", color=color.new(color.rgb(255, 160, 0),  0), linewidth=1, style=plot.style_line, display=display.pane)
 
 var line  htfDN_line = na
 var label htfDN_lbl  = na
@@ -1118,7 +1121,7 @@ if barstate.islast
         line.delete(htfDN_line)
     if not na(htfDN_lbl)
         label.delete(htfDN_lbl)
-    if htfDN and not timeframe.isdaily and not timeframe.isweekly
+    if htfDN and not htfTransUp and not timeframe.isdaily and not timeframe.isweekly
         htfDN_line := line.new(bar_index - 30, ema34, bar_index + 8, ema34,
              color=color.new(color.red, 30), width=2, style=line.style_dashed)
         htfDN_lbl := label.new(bar_index + 8, ema34,
@@ -1591,6 +1594,7 @@ float vpPOC = nz(_vpLo) + (_vpPocIdx + 0.5) * _vpStep
 float vpVAH = nz(_vpLo) + (_vpUp + 1) * _vpStep
 float vpVAL = nz(_vpLo) + _vpDn * _vpStep
 
-plot(showVP and _hasVP ? vpPOC : na, "POC", color=color.new(color.rgb(255, 200, 50), 20), linewidth=2, style=plot.style_stepline)
-plot(showVP and _hasVP ? vpVAH : na, "VAH", color=color.new(color.rgb(0, 180, 255), 35), linewidth=1, style=plot.style_stepline)
-plot(showVP and _hasVP ? vpVAL : na, "VAL", color=color.new(color.rgb(0, 180, 255), 35), linewidth=1, style=plot.style_stepline)
+bool _vp5m = showVP and _hasVP and tf_secs == 300
+plot(_vp5m ? vpPOC : na, "POC", color=color.new(color.rgb(255, 200, 50), 20), linewidth=2, style=plot.style_stepline, display=display.pane)
+plot(_vp5m ? vpVAH : na, "VAH", color=color.new(color.rgb(0, 180, 255), 35), linewidth=1, style=plot.style_stepline, display=display.pane)
+plot(_vp5m ? vpVAL : na, "VAL", color=color.new(color.rgb(0, 180, 255), 35), linewidth=1, style=plot.style_stepline, display=display.pane)
