@@ -20,15 +20,12 @@ showVP        = input.bool(false, "Show Volume Profile",                 group="
 vpBinCount    = input.int(40,     "VP Bins",                             group="🎨 Display", display=display.none, minval=20, maxval=80)
 vpBarWidth    = input.int(15,     "VP Bar Width",                        group="🎨 Display", display=display.none, minval=5, maxval=40)
 showScalpSig  = input.bool(true,  "Show Scalp Long/Short Arrows",       group="🎨 Display", display=display.none)
-dashTop       = input.bool(false, "Dashboard: Top (uncheck = Bottom)",  group="🎨 Display", display=display.none)
 transpBand    = input.int(96,     "Band Transparency",                  group="🎨 Display", display=display.none, minval=0, maxval=100)
-showTopTable  = input.bool(true,  "Show Top Table",                     group="🎨 Display", display=display.none)
 showSetupCard = input.bool(true,  "Show Setup Card (Entry/SL/TP)",       group="🎨 Display", display=display.none)
 useBuiltinVP  = input.bool(true,  "Built-in VP (uncheck when using TradingView SVP)", group="🎨 Display", display=display.none)
 
 grp_style = "🎮 Trading Style"
 tradeStyle = input.string("Scalp", "Trading Style", options=["Scalp","Intraday","Swing"], group=grp_style, display=display.none, tooltip="Scalp=1m/5m/15m drive ACTION. Intraday=5m/15m/1H. Swing=1H/4H/Daily.")
-
 
 grp_ema = "📈 EMA / VWAP"
 showVWAP   = input.bool(true,  "VWAP",     group=grp_ema, display=display.none)
@@ -36,10 +33,6 @@ vwapWidth  = input.int(1,      "VWAP Width", group=grp_ema, display=display.none
 show_e13   = input.bool(true,  "EMA 13",   group=grp_ema, display=display.none)
 show_e34   = input.bool(true,  "EMA 34",   group=grp_ema, display=display.none)
 show_e200  = input.bool(true,  "EMA 200",  group=grp_ema, display=display.none)
-show_e9    = input.bool(false,  "EMA 9",    group=grp_ema, display=display.none)
-show_e21   = input.bool(false,  "EMA 21",   group=grp_ema, display=display.none)
-show_e51   = input.bool(false,  "EMA 51",   group=grp_ema, display=display.none)
-show_e100  = input.bool(false, "EMA 100",  group=grp_ema, display=display.none)
 
 grp_rsi  = "🎯 Core Settings"
 rsi_len  = input.int(14, "RSI Length",     minval=1,  group=grp_rsi, display=display.none)
@@ -120,14 +113,10 @@ dnZoneSize =
      dnZoneSizeInput == "Normal" ? size.normal :
      dnZoneSizeInput == "Large"  ? size.large  : size.huge
 spamAvoid     = input.bool(false, "Alert Every Bar During AVOID (Spammy)", group=grp_htf, display=display.none)
-showWeisTable = input.bool(true,  "Show Weis MTF Table",                   group=grp_htf, display=display.none)
-weisTablePos_in = input.string("Top Right", "Weis Table Position", options=["Top Right","Top Left","Bottom Right","Bottom Left"], group=grp_htf, display=display.none)
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // HTF CANDLE INPUTS (Today + Yesterday)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-weisTablePos = weisTablePos_in == "Top Right" ? position.top_right : weisTablePos_in == "Top Left" ? position.top_left : weisTablePos_in == "Bottom Right" ? position.bottom_right : position.bottom_left
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // VOLUME PROFILE INPUTS
@@ -157,20 +146,6 @@ vp_show_va_labels     = input.bool(true,  "Show VAH / VAL Labels",          grou
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // WEIS WAVE INPUTS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-string weisMethod  = input.string("ATR",    options=["ATR","Traditional","Part of Price"], title="Weis: Renko Method",   group="Weis Wave", display=display.none)
-float  weisMV      = input.float(14.0,      minval=0,                                     title="Weis: Value",          group="Weis Wave", display=display.none)
-string weisSrc     = input.string("Close",  options=["Close","Open / Close","High / Low"], title="Weis: Price Source",   group="Weis Wave", display=display.none)
-string weisUseTR   = input.string("Auto",   options=["Always","Auto","Never"],             title="Weis: Use True Range", group="Weis Wave", display=display.none)
-color  colorUpWV   = input.color(color.green, "Weis: Up Vol",  inline="WC", group="Weis Wave", display=display.none)
-color  colorDnWV   = input.color(color.red,   "Weis: Dn Vol",  inline="WC", group="Weis Wave", display=display.none)
-string weisSize    = input.string("Medium", options=["Tiny","Small","Medium","Large","Huge"], title="Weis: Size", inline="WC", group="Weis Wave", display=display.none)
-int    weisSDF     = input.int(1, options=[1,10,100,1000,10000,100000,1000000], title="Weis: Scale Factor", group="Weis Wave", display=display.none)
-bool   weisMarkers    = input.bool(false, "Weis: Show Pivot Markers", group="Weis Wave", display=display.none)
-bool   weisNumbers    = input.bool(false, "Weis: Show Wave Numbers (default OFF)", group="Weis Wave", display=display.none)
-bool   weisZigZag     = input.bool(false, "Weis: Show Zig Zag",  inline="ZZ", group="Weis Wave", display=display.none)
-color  weisZZCol      = input.color(color.rgb(0,0,0), "",         inline="ZZ", group="Weis Wave", display=display.none)
-bool   weisVolCandles = input.bool(false, "Weis: Volume Candles", inline="VC", group="Weis Wave", display=display.none)
-int    weisEMAP       = input.int(20,     "Weis: Vol EMA Period", inline="VC", group="Weis Wave", display=display.none)
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TF DETECTION
@@ -204,8 +179,9 @@ dB := dB <= 0 ? dB + 1440 : dB
 bool newsActive     = dA <= 30 or dB <= 30
 int  newsMin        = math.min(dA, dB)
 
-bool inTradeSession = isAsiaCore or isLondon or isUSKill
+bool inTradeSession = isAsiaCore or isLondon or isUSKill or isShanghai
 bool isHighVolSess  = isLondon or isUSKill
+bool isMidVolSess   = isShanghai and not isAsiaCore  // Shanghai solo = valid but dampened
 
 bool w_trade1 = not na(time(timeframe.period, "1830-1915:1234567", tz))
 bool w_avoid  = not na(time(timeframe.period, "1930-2015:1234567", tz))
@@ -234,10 +210,6 @@ string adxTxt      = adxStrong ? "STRONG" : adxTrending ? "TREND" : adxRanging ?
 float ema200m = ta.ema(close, 200)
 float ema13   = ta.ema(close, 13)
 float ema34   = ta.ema(close, 34)
-float ema9    = show_e9   ? ta.ema(close, 9)   : na
-float ema21   = show_e21  ? ta.ema(close, 21)  : na
-float ema51   = show_e51  ? ta.ema(close, 51)  : na
-float ema100  = show_e100 ? ta.ema(close, 100) : na
 
 float emaSeparation = math.abs(ema13 - ema34) / close * 100
 
@@ -261,6 +233,7 @@ bool   htfDN   = htfBear
 float  _htfGap = math.abs(htfEma13 - htfEma34) / htfEma34 * 100
 bool   htfTransUp = htfBear and _htfGap < 0.15
 bool   htfTransDn = htfBull and _htfGap < 0.15
+// HTF bias display — Weis momentum states (△UP/△DN) added after D2 section
 string htfBias = htfBull ? (htfTransDn ? "HTF ⚠DN" : "HTF UP") : htfBear ? (htfTransUp ? "HTF ⚠UP" : "HTF DN") : "HTF RNG"
 // ICM 1.6.1: Effective HTF — transition states act as partial bull/bear for zones & grades
 bool _htfBullEff = (htfBull and not htfTransDn) or htfTransUp
@@ -300,6 +273,18 @@ int wbp15m = _wpct(_wb15m, _ws15m)
 int wbp1h  = _wpct(_wb1h,  _ws1h)
 int wbp4h  = _wpct(_wb4h,  _ws4h)
 
+// CX 360 v3: Weis momentum override — bypass EMA alignment lag during strong moves
+// Must be after wbp4h/wbp1h (D2) and ema13 (B) are declared
+bool _weisMomBull = wbp4h > 70 and wbp1h > 60 and close > ema13 and adxV > 20
+bool _weisMomBear = wbp4h < 30 and wbp1h < 40 and close < ema13 and adxV > 20
+_htfBullEff := _htfBullEff or _weisMomBull
+_htfBearEff := _htfBearEff or _weisMomBear
+// Update HTF bias display with Weis momentum state
+if _weisMomBull and not htfBull
+    htfBias := "HTF △UP"
+if _weisMomBear and not htfBear
+    htfBias := "HTF △DN"
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // E) PD LEVELS + PIVOTS + MACRO VERDICT
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -322,7 +307,6 @@ float S3 = dLowPrev  - 2.0 * (dHighPrev - P)
 float atrPct   = atrV / close * 100.0
 float volScore = atrPct + volRatio * 0.6
 int   volaLvl  = volScore >= 3.2 ? 3 : volScore >= 2.4 ? 2 : volScore >= 1.6 ? 1 : 0
-
 
 bool hardBlock = isAvoid or newsActive or not inTradeSession
 bool sessionOK = inTradeSession and not hardBlock
@@ -380,11 +364,15 @@ int _fibGradeAdj = _fibRetrace <= 0.236 ? 2 :
 bool belowEma200 = close < ema200m
 bool aboveEma200 = close > ema200m
 
-
 float dist13       = (close - ema13) / close * 100
 string pullbackTxt =
      math.abs(dist13) > 0.8 ? "EXTENDED" :
      math.abs(dist13) < 0.2 ? "PULLBACK" : "HEALTHY"
+
+// CX 360 v3: Late entry detection (declared early, used in labels + state machine)
+bool _lateEntry     = rsiMain > 68 and pullbackTxt == "EXTENDED" and atrV > ta.sma(atrV, 20) * 1.3
+bool _lateEntrySell = rsiMain < 32 and pullbackTxt == "EXTENDED" and atrV > ta.sma(atrV, 20) * 1.3
+bool _isLateChase   = _lateEntry or _lateEntrySell
 
 float s5  = (rsi5  - 50) * 2
 float s15 = (rsi15 - 50) * 2
@@ -449,6 +437,8 @@ string sessTxt =
 // H) READINESS SCORE + ZONE ENGINE + CANDLE PATTERNS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 float zoneWidth = close * (zone_near_pct / 100.0)
+// CX 360 v3: Widen zone detection in strong trends — EMA13 pullback = valid entry zone
+float _dynZoneWidth = (_htfBullEff or _htfBearEff) and adxV > 25 ? zoneWidth * 1.5 : zoneWidth
 
 float nearSupport = na
 float _dists = 99999.0
@@ -471,7 +461,7 @@ if not na(ema34)
 for i = 0 to array.size(supLevels) - 1
     float lvl = array.get(supLevels, i)
     float d   = math.abs(close - lvl)
-    if d < _dists and close >= lvl - zoneWidth
+    if d < _dists and close >= lvl - _dynZoneWidth
         _dists      := d
         nearSupport := lvl
 
@@ -496,17 +486,19 @@ if not na(ema34)
 for i = 0 to array.size(resLevels) - 1
     float lvl = array.get(resLevels, i)
     float d   = math.abs(close - lvl)
-    if d < _distr and close <= lvl + zoneWidth
+    if d < _distr and close <= lvl + _dynZoneWidth
         _distr     := d
         nearResist := lvl
 
-bool atSupport    = not na(nearSupport) and math.abs(close - nearSupport) <= zoneWidth
-bool atResistance = not na(nearResist)  and math.abs(close - nearResist)  <= zoneWidth
+bool atSupport    = not na(nearSupport) and math.abs(close - nearSupport) <= _dynZoneWidth
+bool atResistance = not na(nearResist)  and math.abs(close - nearResist)  <= _dynZoneWidth
 
 // ── CONF score (0-100) — replaces ALIGN/syncScore ────────────────
 // Measures overall trade confidence from multiple independent factors
+// CX 360 v3: Added Weis MTF factor, rebalanced level weight
+int _weisMix = int(math.round(wbp4h * 0.35 + wbp1h * 0.28 + wbp15m * 0.22 + wbp5m * 0.15))
 int _confScore = 0
-if htfBull or htfBear                              // HTF has clear direction
+if htfBull or htfBear or _weisMomBull or _weisMomBear  // HTF has clear direction (incl Weis override)
     _confScore += 20
 if adxV > 20                                      // Trend strength confirmed
     _confScore += 15
@@ -517,7 +509,12 @@ if emasTrending                                    // EMAs properly separated
 if volRatio > 1.0                                  // Volume above average
     _confScore += 10
 if atSupport or atResistance                       // Price at key level
-    _confScore += 20
+    _confScore += 15                               // v3: reduced from 20 to make room for Weis
+// CX 360 v3: Weis MTF alignment — strongest directional signal
+bool _weisAlignedBull = _weisMix >= 65 and _htfBullEff
+bool _weisAlignedBear = _weisMix <= 35 and _htfBearEff
+if _weisAlignedBull or _weisAlignedBear
+    _confScore += 15
 
 if adxV < 15
     _confScore := math.min(_confScore, 55)
@@ -526,9 +523,9 @@ else if adxV < 20
 // Slope trending but ADX weak → boost CONF (ADX lag compensation)
 if _slopeTrending and adxV < 20
     _confScore := math.min(_confScore + 15, 75)
-// ICM 1.2: Smart session dampening — less aggressive when ADX trending
-// ICM 1.2: Smart session dampening — less aggressive when ADX trending
+// CX 360 v3: 3-tier session dampening (full / mid / off)
 bool _sessOff = not inTradeSession
+bool _sessMid = isMidVolSess  // Shanghai solo
 if _sessOff
     if adxV > 25
         _confScore := int(_confScore * 0.8)
@@ -536,6 +533,8 @@ if _sessOff
         _confScore := int(_confScore * 0.7)
     else
         _confScore := int(_confScore * 0.6)
+else if _sessMid
+    _confScore := int(_confScore * 0.85)  // mild dampening, not full block
     
 float syncScore = math.min(100, float(_confScore)) // keep syncScore alias
 float _confSmooth = ta.ema(syncScore, 5)           // ICM 1.4: smoothed CONF
@@ -544,11 +543,17 @@ string _confTier = _confSmooth >= 65 ? "HIGH" : _confSmooth >= 40 ? "MED" : "LOW
 bool weisExhaustion = rsiMain < 35 and wbp15m < 20
 bool weisOverbought = rsiMain > 65 and wbp15m > 80
 
+// CX 360 v3: Trend-mode RSI windows — wider in confirmed trends
+bool _trendModeBuy  = _htfBullEff and adxV > 22
+bool _trendModeSell = _htfBearEff and adxV > 22
+bool _rsiBuyOK  = _trendModeBuy  ? (rsiMain >= 40 and rsiMain <= 65) : (rsiMain >= 25 and rsiMain <= 45)
+bool _rsiSellOK = _trendModeSell ? (rsiMain >= 35 and rsiMain <= 60) : (rsiMain >= 55 and rsiMain <= 75)
+
 int readyBuy =
      (_htfBullEff     ? 1 : 0) +
      (biasAlignScore >= 3 ? 1 : 0) +
      (atSupport      ? 1 : 0) +
-     (rsiMain >= 25 and rsiMain <= 45 ? 1 : 0) +
+     (_rsiBuyOK      ? 1 : 0) +
      (isHighVolSess  ? 1 : 0) +
      (pullbackTxt == "PULLBACK" ? 1 : 0) +
      (volRatio > 1.2 ? 1 : 0) +
@@ -560,7 +565,7 @@ int readySell =
      (_htfBearEff     ? 1 : 0) +
      (biasAlignScore <= 1 ? 1 : 0) +
      (atResistance   ? 1 : 0) +
-     (rsiMain >= 55 and rsiMain <= 75 ? 1 : 0) +
+     (_rsiSellOK     ? 1 : 0) +
      (isHighVolSess  ? 1 : 0) +
      (pullbackTxt == "PULLBACK" ? 1 : 0) +
      (volRatio > 1.2 ? 1 : 0) +
@@ -584,7 +589,6 @@ float _readyPriceMove = close - _readyStartPrice
 
 bool _readyStress = (readyDir == "SELL" and _readyPriceMove > atrV * 2.0) or (readyDir == "BUY" and _readyPriceMove < -atrV * 2.0)
 bool _readyCancel = (readyDir == "SELL" and _readyPriceMove > atrV * 3.0) or (readyDir == "BUY" and _readyPriceMove < -atrV * 3.0)
-
 
 string readyTxt    = str.tostring(readiness) + "/10"
 // ICM 1.4: Enhanced READY decision engine
@@ -664,7 +668,6 @@ if buyZoneActive or sellZoneActive
     scalpLong  := false
     scalpShort := false
 
-
 // ─────────────────────────────────────────
 // ZONE BREAKOUT DETECTION
 // ─────────────────────────────────────────
@@ -734,11 +737,11 @@ bool bearPattern = isShootingStar or isBearEngulf or iBearPin or iIBBreakDn
 plotshape(show_candle_patt and bullPattern, title="Bull Pattern",
      style=shape.diamond, location=location.belowbar,
      color=color.new(color.rgb(0,255,150), 0), size=size.small,
-     text="◆", textcolor=color.rgb(0,255,150), display=display.none)
+     text="◆", textcolor=color.rgb(0,255,150), display=display.pane)
 plotshape(show_candle_patt and bearPattern, title="Bear Pattern",
      style=shape.diamond, location=location.abovebar,
      color=color.new(color.rgb(255,80,80), 0), size=size.small,
-     text="◆", textcolor=color.rgb(255,80,80), display=display.none)
+     text="◆", textcolor=color.rgb(255,80,80), display=display.pane)
 
 float swingHigh = ta.highest(high, sl_swing_lookback)
 float swingLow  = ta.lowest(low,  sl_swing_lookback)
@@ -881,21 +884,14 @@ plotshape(false, title="Bear Divergence",
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // I) COLORS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-color C_BG_CELL  = color.rgb(38,  42,  68)
-color C_UP       = color.rgb(70,  200, 130)
-color C_GOLD     = color.rgb(255, 215, 0)
 color C_NEWS     = color.rgb(185, 60,  60)
 color C_AVOID    = color.rgb(100, 100, 115)
 color C_DANGER   = color.rgb(190, 60,  60)
 color C_MOMENTUM = color.rgb(210, 150, 60)
-color C_OPP      = color.rgb(60,  155, 115)
-color C_STBY     = color.rgb(100, 100, 115)
 color C_YELLOW   = color.rgb(255, 235, 59)
 color C_MAGENTA  = color.rgb(233, 30,  99)
 color C_GREEN    = color.rgb(76,  175, 80)
 color C_MILDG    = color.rgb(150, 230, 170)
-color C_WARN     = color.rgb(210, 120, 0)
-color C_BA_AVOID = color.rgb(180, 80,  0)
 
 color bandColor = volaLvl == 3 ? C_DANGER : volaLvl == 2 ? C_MOMENTUM : na
 color bgFinal =
@@ -908,212 +904,6 @@ color bgFinal =
      showBands and canTrade and volaLvl >= 2 ? color.new(bandColor, transpBand) : na
 
 bgcolor(show_bg and na(zoneBg) ? bgFinal : na)
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ── Shared color palette ──────────────────────────────────────────────
-color _BB_GRAY   = color.rgb(55, 58, 80)       // neutral / no signal
-color _BB_GREEN  = color.rgb(0,  90, 30)       // good condition
-color _BB_YELLOW = color.rgb(110, 85, 0)       // caution
-color _BB_ORANGE = color.rgb(110, 48, 0)       // elevated risk
-color _BB_RED    = color.rgb(110, 18, 18)      // danger / avoid
-color _BB_HDR    = color.rgb(28, 30, 50)       // header row bg
-color _BB_TXT    = color.new(color.silver, 10) // header text
-
-// ── ATR status (absolute value — Gold 5m thresholds) ─────────────────
-// ICM 1.2: TF-adaptive ATR thresholds
-float _atr_lo  = tf_secs <= 60 ? 1.5 : tf_secs <= 300 ? 3.0 : tf_secs <= 900 ? 5.0 : 8.0
-float _atr_hi  = tf_secs <= 60 ? 4.0 : tf_secs <= 300 ? 8.0 : tf_secs <= 900 ? 12.0 : 20.0
-float _atr_spk = tf_secs <= 60 ? 8.0 : tf_secs <= 300 ? 15.0 : tf_secs <= 900 ? 25.0 : 40.0
-string _atr_status = atrV >= _atr_spk ? "SPIKE" : atrV >= _atr_hi ? "HIGH" : atrV >= _atr_lo ? "NRM" : "LOW"
-color  _atr_bg     = atrV >= _atr_spk ? _BB_RED : atrV >= _atr_hi ? _BB_YELLOW : atrV >= _atr_lo ? _BB_GREEN : _BB_GRAY
-color  _atr_tx     = atrV >= _atr_spk ? color.rgb(255,90,90) : atrV >= _atr_hi ? color.rgb(255,220,80) : atrV >= _atr_lo ? color.rgb(80,255,140) : color.rgb(150,190,255)
-string _atr_disp   = str.tostring(atrV, "#.#") + " " + _atr_status
-
-// ── EMA separation ────────────────────────────────────────────────────
-// ICM 1.2/1.4: EMA expansion detection (COMPRESS → EXPAND ↑/↓)
-float _emaSpread3 = (math.max(ema13, math.max(ema34, ema200m)) -
-                     math.min(ema13, math.min(ema34, ema200m))) / close * 100
-bool  _emaCluster = _emaSpread3 < 0.15
-// ICM 1.4: Faster expand — lookback 2 bars on 1m, 3 on higher; persist 5 bars
-bool  _wasCluster = tf_secs <= 60 ? _emaSpread3[2] < 0.15 : _emaSpread3[3] < 0.15
-bool  _emaExpanding = _wasCluster and _emaSpread3 >= 0.15
-var int _expandBar = 0
-if _emaExpanding
-    _expandBar := bar_index
-bool _expandActive = (bar_index - _expandBar) <= 5 and _expandBar > 0
-bool  _expandUp = _expandActive and ema13 > ema34
-bool  _expandDn = _expandActive and ema13 < ema34
-string _emaSepTxt = _emaCluster ? "COMPRESS" :
-     _expandUp ? "EXPAND ↑" :
-     _expandDn ? "EXPAND ↓" :
-     str.tostring(emaSeparation, "#.3") + (emasTrending ? "✓" : "✗")
-color  _emaSepBg  = _emaCluster ? _BB_ORANGE :
-     _expandUp ? color.rgb(0, 70, 45) :
-     _expandDn ? color.rgb(90, 20, 10) :
-     emasTrending ? _BB_GREEN : _BB_RED
-color  _emaSepTx  = _emaCluster ? color.rgb(255,200,50) :
-     _expandUp ? color.rgb(80, 255, 160) :
-     _expandDn ? color.rgb(255, 100, 80) :
-     color.white
-
-// ── Build bottom bar table ────────────────────────────────────────────
-
-// ── MTF bias helper functions (must be at top level in Pine v6) ───────
-_bBg(float s)  => s > 5 ? color.rgb(0,90,30) : s < -5 ? color.rgb(110,18,18) : color.rgb(55,58,80)
-_bTx(float s)  => s > 5 ? color.rgb(80,255,140) : s < -5 ? color.rgb(255,90,90) : color.gray
-_bVal(float s) => str.tostring(s, "#.0")
-
-var table bb = table.new(dashTop ? position.top_center : position.bottom_center, 19, 2,
-     bgcolor=color.new(color.rgb(20,22,38), 8),
-     border_color=color.new(color.gray, 75), border_width=1,
-     frame_color=color.new(color.gray, 60), frame_width=1)
-
-if barstate.islast and showTopTable
-
-    // ── Row 0: Headers — 5 GROUP COLORS ─────────────────────────────────
-    // G1=Access(green) G2=Direction(blue) G3=Strength(orange) G4=Execution(purple) G5=Confirm(gray)
-    color _G1H = color.rgb(10, 40, 18)    // dark green
-    color _G2H = color.rgb(10, 25, 55)    // dark blue
-    color _G3H = color.rgb(45, 25, 0)     // dark orange
-    color _G4H = color.rgb(30, 10, 48)    // dark purple
-    color _G1T = color.rgb(80, 210, 120)  // green text
-    color _G2T = color.rgb(90, 160, 230)  // blue text
-    color _G3T = color.rgb(220, 150, 40)  // orange text
-    color _G4T = color.rgb(180, 130, 220) // purple text
-
-    color _SEP = color.rgb(8, 8, 18)  // separator column color
-
-    // SECTION 1 — CONTEXT (cols 0-2)
-    table.cell(bb,  0, 0, "SESSION",    text_color=_G1T, text_size=size.small, bgcolor=_G1H)
-    table.cell(bb,  1, 0, "NEWS",       text_color=_G1T, text_size=size.small, bgcolor=_G1H)
-    table.cell(bb,  2, 0, "ZONE",       text_color=_G1T, text_size=size.small, bgcolor=_G1H)
-    table.cell(bb,  3, 0, "",           text_color=_SEP, text_size=size.tiny,  bgcolor=_SEP)
-    // SECTION 2 — DIRECTION (cols 4-9)
-    table.cell(bb,  4, 0, "5m",         text_color=_G2T, text_size=size.small, bgcolor=_G2H)
-    table.cell(bb,  5, 0, "15m",        text_color=_G2T, text_size=size.small, bgcolor=_G2H)
-    table.cell(bb,  6, 0, "1H",         text_color=_G2T, text_size=size.small, bgcolor=_G2H)
-    table.cell(bb,  7, 0, "4H",         text_color=_G2T, text_size=size.small, bgcolor=_G2H)
-    table.cell(bb,  8, 0, "HTF",        text_color=_G2T, text_size=size.small, bgcolor=_G2H)
-    table.cell(bb,  9, 0, "VWAP",       text_color=_G2T, text_size=size.small, bgcolor=_G2H)
-    table.cell(bb, 10, 0, "",           text_color=_SEP, text_size=size.tiny,  bgcolor=_SEP)
-    // SECTION 3 — MARKET STATE (cols 11-13)
-    table.cell(bb, 11, 0, "ADX",        text_color=_G3T, text_size=size.small, bgcolor=_G3H)
-    table.cell(bb, 12, 0, "ATR",        text_color=_G3T, text_size=size.small, bgcolor=_G3H)
-    table.cell(bb, 13, 0, "RSI",        text_color=_G3T, text_size=size.small, bgcolor=_G3H)
-    table.cell(bb, 14, 0, "",           text_color=_SEP, text_size=size.tiny,  bgcolor=_SEP)
-    // SECTION 4 — ENTRY + DECISION (cols 15-19)
-    table.cell(bb, 15, 0, "EMA",        text_color=_G4T, text_size=size.small, bgcolor=_G4H)
-    table.cell(bb, 16, 0, "PULLBK",     text_color=_G4T, text_size=size.small, bgcolor=_G4H)
-    table.cell(bb, 17, 0, "CONF",       text_color=_G4T, text_size=size.small, bgcolor=_G4H)
-    table.cell(bb, 18, 0, "GRADE",      text_color=_G4T, text_size=size.small, bgcolor=_G4H)
-
-    // ── Row 1 Values — SECTION 1 CONTEXT (cols 0-2) ─────────────────
-
-    // 0 — SESSION
-    color _ssBg = isUSKill or isLondon ? _BB_GREEN : isAsiaCore or isIndia ? _BB_YELLOW : _BB_GRAY
-    color _ssTx = isUSKill or isLondon ? color.rgb(80,240,130) : isAsiaCore or isIndia ? color.rgb(245,205,70) : color.rgb(120,125,160)
-    table.cell(bb, 0, 1, sessTxt, text_color=_ssTx, text_size=size.normal, bgcolor=_ssBg)
-
-    // 1 — NEWS
-    color _nwBg = newsMin <= 30 ? _BB_RED : newsMin <= 60 ? _BB_ORANGE : newsMin <= 120 ? _BB_YELLOW : _BB_GREEN
-    color _nwTx = newsMin <= 60 ? color.rgb(245,100,100) : newsMin <= 120 ? color.rgb(245,205,70) : color.rgb(80,240,130)
-    table.cell(bb, 1, 1, newsDisp, text_color=_nwTx, text_size=size.normal, bgcolor=_nwBg)
-
-    // 2 — ZONE
-    string _znTxt = buyZoneActive ? "BUY ZONE" :
-         sellZoneActive ? "SELL ZONE" :
-         breakoutUp ? "BRKOUT ↑" :
-         breakoutDn ? "BRKOUT ↓" :
-         _sessOff ? "INACTIVE" :
-         biasIsAvoid ? "BA BLOCK" : "NO ZONE"
-    color _znBg = buyZoneActive ? _BB_GREEN :
-         sellZoneActive ? _BB_RED :
-         breakoutUp ? color.rgb(0, 60, 90) :
-         breakoutDn ? color.rgb(90, 30, 0) :
-         _sessOff ? color.rgb(35, 35, 45) :
-         biasIsAvoid ? _BB_ORANGE : _BB_GRAY
-    color _znTx = buyZoneActive ? color.rgb(80,240,130) :
-         sellZoneActive ? color.rgb(245,90,90) :
-         breakoutUp ? color.rgb(80,200,255) :
-         breakoutDn ? color.rgb(255,160,80) :
-         _sessOff ? color.rgb(80,80,100) :
-         biasIsAvoid ? color.rgb(245,155,55) : color.rgb(120,125,160)
-    table.cell(bb, 2, 1, _znTxt, text_color=_znTx, text_size=size.normal, bgcolor=_znBg)
-
-    table.cell(bb, 3, 1, "", text_color=_SEP, text_size=size.tiny, bgcolor=_SEP)
-
-    // ── SECTION 2 DIRECTION (cols 4-9) ────────────────────────────────
-
-    table.cell(bb, 4, 1, _bVal(s5),  text_color=_bTx(s5),  text_size=size.normal, bgcolor=_bBg(s5))
-    table.cell(bb, 5, 1, _bVal(s15), text_color=_bTx(s15), text_size=size.normal, bgcolor=_bBg(s15))
-    table.cell(bb, 6, 1, _bVal(s1h), text_color=_bTx(s1h), text_size=size.normal, bgcolor=_bBg(s1h))
-    table.cell(bb, 7, 1, _bVal(s4h), text_color=_bTx(s4h), text_size=size.normal, bgcolor=_bBg(s4h))
-
-    color _htfBg = htfTransUp or htfTransDn ? color.rgb(50,40,0) : htfBull ? _BB_GREEN : htfBear ? _BB_RED : _BB_GRAY
-    color _htfTx = htfTransUp or htfTransDn ? color.rgb(245,205,70) : htfBull ? color.rgb(80,240,130) : htfBear ? color.rgb(245,90,90) : color.rgb(120,125,160)
-    table.cell(bb, 8, 1, htfBias, text_color=_htfTx, text_size=size.normal, bgcolor=_htfBg)
-
-    color _vwBg = aboveVWAP ? _BB_GREEN : _BB_RED
-    color _vwTx = aboveVWAP ? color.rgb(80,240,130) : color.rgb(245,90,90)
-    float _vwDist = math.abs(close - vwapLine)
-    string _vwTxt = (aboveVWAP ? "↑ " : "↓ ") + str.tostring(_vwDist, "#.#")
-    table.cell(bb, 9, 1, _vwTxt, text_color=_vwTx, text_size=size.normal, bgcolor=_vwBg)
-
-    table.cell(bb, 10, 1, "", text_color=_SEP, text_size=size.tiny, bgcolor=_SEP)
-
-    // ── SECTION 3 MARKET STATE (cols 11-13) ─────────────────────────────
-
-    color _adBg = adxStrong ? _BB_GREEN : adxTrending ? color.rgb(0,52,16) : adxRanging ? _BB_RED : _BB_ORANGE
-    color _adTx = adxStrong ? color.rgb(80,240,130) : adxTrending ? color.rgb(110,235,150) : adxRanging ? color.rgb(245,80,80) : color.rgb(235,185,55)
-    table.cell(bb, 11, 1, str.tostring(adxV, "#.0") + " " + adxTxt, text_color=_adTx, text_size=size.normal, bgcolor=_adBg)
-
-    table.cell(bb, 12, 1, _atr_disp, text_color=_atr_tx, text_size=size.normal, bgcolor=_atr_bg)
-
-    bool _rsiExtOB = rsiMain > 75
-    bool _rsiExtOS = rsiMain < 25
-    color _rsiBg = _rsiExtOB ? color.rgb(140, 0, 0) : rsiMain > rsi_ob ? _BB_RED : _rsiExtOS ? color.rgb(0, 100, 50) : rsiMain < rsi_os ? _BB_GREEN : rsiMain > 55 ? _BB_GREEN : rsiMain < 45 ? _BB_RED : _BB_GRAY
-    color _rsiTx = _rsiExtOB ? color.rgb(255, 50, 50) : rsiMain > rsi_ob ? color.rgb(245,90,90) : _rsiExtOS ? color.rgb(50, 255, 120) : rsiMain < rsi_os ? color.rgb(80,240,130) : rsiMain > 55 ? color.rgb(80,240,130) : rsiMain < 45 ? color.rgb(245,90,90) : color.rgb(120,125,160)
-    string _rsiDisp = _rsiExtOB ? str.tostring(rsiMain, "#.0") + "🔥" : _rsiExtOS ? str.tostring(rsiMain, "#.0") + "❄" : str.tostring(rsiMain, "#.0")
-    table.cell(bb, 13, 1, _rsiDisp, text_color=_rsiTx, text_size=size.normal, bgcolor=_rsiBg)
-
-    table.cell(bb, 14, 1, "", text_color=_SEP, text_size=size.tiny, bgcolor=_SEP)
-
-    // ── SECTION 4 ENTRY + DECISION (cols 15-19) ──────────────────────
-
-    table.cell(bb, 15, 1, _emaSepTxt, text_color=_emaSepTx, text_size=size.normal, bgcolor=_emaSepBg)
-
-    color _pbBg = pullbackTxt == "PULLBACK" ? _BB_GREEN : pullbackTxt == "HEALTHY" ? _BB_YELLOW : _BB_RED
-    color _pbTx = pullbackTxt == "PULLBACK" ? color.rgb(80,240,130) : pullbackTxt == "HEALTHY" ? color.rgb(245,205,70) : color.rgb(245,90,90)
-    string _pbShort = pullbackTxt == "PULLBACK" ? "PULLBK" : pullbackTxt == "HEALTHY" ? "HEALTH" : "EXTEND"
-    table.cell(bb, 16, 1, _pbShort, text_color=_pbTx, text_size=size.normal, bgcolor=_pbBg)
-
-    color _snBg = _confSmooth >= 65 ? _BB_GREEN : _confSmooth >= 40 ? _BB_YELLOW : _BB_RED
-    color _snTx = _confSmooth >= 65 ? color.rgb(80,240,130) : _confSmooth >= 40 ? color.rgb(245,205,70) : color.rgb(245,90,90)
-    table.cell(bb, 17, 1, str.tostring(int(_confSmooth)) + "% " + _confTier, text_color=_snTx, text_size=size.normal, bgcolor=_snBg)
-
-  // GRADE — final column
-    color _grBg = _grade == "A+" ? color.rgb(0,70,30) : _grade == "A" ? color.rgb(0,55,20) : _grade == "B" ? color.rgb(50,40,0) : _grade == "C" ? color.rgb(60,30,0) : color.rgb(65,10,10)
-    table.cell(bb, 18, 1, _grade, text_color=color.white, text_size=size.normal, bgcolor=_grBg)
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// K) VWAP + EMA PLOTS
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-plot(showVWAP ? vwapLine : na, title="VWAP",
-     color=color.new(color.white, 10), linewidth=vwapWidth, style=plot.style_linebr, display=display.pane)
-
-
-plot(show_e13 ? ema13 : na,   title="EMA 13",
-     color=color.new(color.rgb(0, 200, 80),   0), linewidth=2, style=plot.style_linebr, display=display.pane)
-plot(show_e34 ? ema34 : na,   title="EMA 34",
-     color=color.new(color.rgb(180, 60, 255), 0), linewidth=2, style=plot.style_linebr, display=display.pane)
-plot(show_e200 and bar_index % 2 == 0 ? ema200m : na, title="EMA 200",
-     color=color.new(color.rgb(255, 40, 40),  0), linewidth=2, style=plot.style_linebr, display=display.pane)
-
-plot(show_e9   ? ema9   : na, title="EMA 9",   color=color.new(color.rgb(0, 230, 80),   0), linewidth=1, style=plot.style_line, display=display.pane)
-plot(show_e21  ? ema21  : na, title="EMA 21",  color=color.new(color.rgb(200, 100, 255),0), linewidth=1, style=plot.style_line, display=display.pane)
-plot(show_e51  ? ema51  : na, title="EMA 51",  color=color.new(color.rgb(40, 130, 255), 0), linewidth=1, style=plot.style_line, display=display.pane)
-
-plot(show_e100 ? ema100 : na, title="EMA 100", color=color.new(color.rgb(255, 160, 0),  0), linewidth=1, style=plot.style_line, display=display.pane)
 
 var line  htfDN_line = na
 var label htfDN_lbl  = na
@@ -1130,53 +920,18 @@ if barstate.islast
              textcolor=color.rgb(255, 80, 80),
              color=color.new(color.rgb(40, 0, 0), 60), size=dnZoneSize)
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// L2) WEIS MULTI-TIMEFRAME TABLE
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// MTF table: >65% strong green, <35% strong red, else neutral gray
-_wCellBg(int bp) => bp >= 65 ? color.rgb(0,80,25) : bp <= 35 ? color.rgb(90,15,15) : color.rgb(38,40,58)
-_wCellTx(int bp) => bp >= 65 ? color.rgb(80,240,130) : bp <= 35 ? color.rgb(245,90,90) : color.rgb(110,115,150)
+// CX 360 v3: Late entry warning label on chart
+var label _lateLbl = na
+if barstate.islast
+    if not na(_lateLbl)
+        label.delete(_lateLbl)
+    if _isLateChase
+        _lateLbl := label.new(bar_index + 3, _lateEntry ? high + atrV * 0.5 : low - atrV * 0.5,
+             "⚠ LATE — DO NOT CHASE",
+             style=_lateEntry ? label.style_label_down : label.style_label_up,
+             textcolor=color.rgb(255, 255, 80),
+             color=color.new(color.rgb(180, 30, 30), 20), size=size.normal)
 
-var table weisT = table.new(weisTablePos, 3, 7,
-     bgcolor=color.new(color.rgb(35,38,62), 5),
-     border_color=color.new(color.gray, 60), border_width=1,
-     frame_color=color.new(color.gray, 40), frame_width=1)
-
-if barstate.islast and showWeisTable
-    color _wHdrBg = color.rgb(48,52,80)
-    color _wHdrTx = color.new(color.silver, 10)
-    table.cell(weisT, 0, 0, "TF",   text_color=_wHdrTx, text_size=size.small, bgcolor=_wHdrBg)
-    table.cell(weisT, 1, 0, "BUY",  text_color=color.rgb(80,255,140), text_size=size.small, bgcolor=_wHdrBg)
-    table.cell(weisT, 2, 0, "SELL", text_color=color.rgb(255,90,90),  text_size=size.small, bgcolor=_wHdrBg)
-    table.cell(weisT, 0, 1, "4H", text_color=_wHdrTx, text_size=size.small, bgcolor=_wHdrBg)
-    table.cell(weisT, 1, 1, str.tostring(wbp4h) + "%",      text_color=_wCellTx(wbp4h),      text_size=size.normal, bgcolor=_wCellBg(wbp4h))
-    table.cell(weisT, 2, 1, str.tostring(100-wbp4h) + "%",  text_color=_wCellTx(100-wbp4h),  text_size=size.normal, bgcolor=_wCellBg(100-wbp4h))
-    table.cell(weisT, 0, 2, "1H", text_color=_wHdrTx, text_size=size.small, bgcolor=_wHdrBg)
-    table.cell(weisT, 1, 2, str.tostring(wbp1h) + "%",      text_color=_wCellTx(wbp1h),      text_size=size.normal, bgcolor=_wCellBg(wbp1h))
-    table.cell(weisT, 2, 2, str.tostring(100-wbp1h) + "%",  text_color=_wCellTx(100-wbp1h),  text_size=size.normal, bgcolor=_wCellBg(100-wbp1h))
-    table.cell(weisT, 0, 3, "15m",text_color=_wHdrTx, text_size=size.small, bgcolor=_wHdrBg)
-    table.cell(weisT, 1, 3, str.tostring(wbp15m) + "%",     text_color=_wCellTx(wbp15m),     text_size=size.normal, bgcolor=_wCellBg(wbp15m))
-    table.cell(weisT, 2, 3, str.tostring(100-wbp15m) + "%", text_color=_wCellTx(100-wbp15m), text_size=size.normal, bgcolor=_wCellBg(100-wbp15m))
-    table.cell(weisT, 0, 4, "5m", text_color=_wHdrTx, text_size=size.small, bgcolor=_wHdrBg)
-    table.cell(weisT, 1, 4, str.tostring(wbp5m) + "%",      text_color=_wCellTx(wbp5m),      text_size=size.normal, bgcolor=_wCellBg(wbp5m))
-    table.cell(weisT, 2, 4, str.tostring(100-wbp5m) + "%",  text_color=_wCellTx(100-wbp5m),  text_size=size.normal, bgcolor=_wCellBg(100-wbp5m))
-    bool _1mCounter = (wbp1m > 60 and wbp1h < 40) or (wbp1m < 40 and wbp1h > 60)
-    table.cell(weisT, 0, 5, _1mCounter ? "1m⚡" : "1m", text_color=_1mCounter ? color.rgb(255,200,50) : _wHdrTx, text_size=size.small, bgcolor=_wHdrBg)
-    table.cell(weisT, 1, 5, str.tostring(wbp1m) + "%",      text_color=_wCellTx(wbp1m),      text_size=size.normal, bgcolor=_wCellBg(wbp1m))
-    table.cell(weisT, 2, 5, str.tostring(100-wbp1m) + "%",  text_color=_wCellTx(100-wbp1m),  text_size=size.normal, bgcolor=_wCellBg(100-wbp1m))
-    int _totalBuy  = int(math.round(wbp4h * 0.35 + wbp1h * 0.28 + wbp15m * 0.22 + wbp5m * 0.15))
-    int _totalSell = 100 - _totalBuy
-    string _totalDir = _totalBuy >= 60 ? "▲ BULL" : _totalBuy <= 40 ? "▼ BEAR" : "— MIX"
-    color _tBuyTx  = _totalBuy  >= 65 ? color.rgb(80,240,130) : _totalBuy  <= 35 ? color.rgb(245,90,90) : color.rgb(245,205,70)
-    color _tSellTx = _totalSell >= 65 ? color.rgb(80,240,130) : _totalSell <= 35 ? color.rgb(245,90,90) : color.rgb(245,205,70)
-    color _tBuyBg  = _totalBuy  >= 65 ? color.rgb(0,75,22) : _totalBuy  <= 35 ? color.rgb(80,10,10) : color.rgb(48,42,0)
-    color _tSellBg = _totalSell >= 65 ? color.rgb(0,75,22) : _totalSell <= 35 ? color.rgb(80,10,10) : color.rgb(48,42,0)
-    table.cell(weisT, 0, 6, _totalDir, text_color=_totalBuy>=60 ? color.rgb(80,240,130) : _totalSell>=60 ? color.rgb(245,90,90) : color.rgb(245,205,70), text_size=size.small, bgcolor=color.rgb(28,30,50))
-    table.cell(weisT, 1, 6, str.tostring(_totalBuy)  + "%", text_color=_tBuyTx,  text_size=size.normal, bgcolor=_tBuyBg)
-    table.cell(weisT, 2, 6, str.tostring(_totalSell) + "%", text_color=_tSellTx, text_size=size.normal, bgcolor=_tSellBg)
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // M) PD LEVELS + PIVOTS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 color colPDH   = color.rgb(80,150,255)
@@ -1280,106 +1035,6 @@ if barstate.islast and _showLevels
             lbS2 := label.new(xl_pv, S2, "S2", xloc=xloc.bar_index, style=label.style_label_left, textcolor=color.white, color=color.rgb(30,110,60), size=size.small)
         if (manual ? showSRManual : isNear(S3))
             lbS3 := label.new(xl_pv, S3, "S3", xloc=xloc.bar_index, style=label.style_label_left, textcolor=color.white, color=color.rgb(20,80,45), size=size.small)
-
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// N) WEIS WAVE
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-int   _wvMax = 8
-float METHODVALUE_STEP = 1.0
-color g_01 = #dff5df, color g_02 = #c8e6c9, color g_03 = #03f703
-color g_04 = #44c649, color g_05 = #0ca80c, color g_06 = #006700
-color r_01 = #f4e5e5, color r_02 = #f9cdcd, color r_03 = #f79b9b
-color r_04 = #e66161, color r_05 = #F30000, color r_06 = #9F0000
-
-float avgVol_w     = ta.ema(volume, weisEMAP)
-float volFrac_w    = volume / avgVol_w
-bool  isUpCandle_w = close > open
-color candleColor_w = na
-
-bool  wUseClose = weisSrc == "Close"
-bool  wUseOC    = weisSrc == "Open / Close" or wUseClose
-float volW      = weisUseTR == "Always" ? ta.tr(true) : weisUseTR == "Auto" and na(volume) ? ta.tr(true) : volume
-float op_w      = wUseClose ? close : open
-float hi_w      = wUseOC ? (close >= op_w ? close : op_w) : high
-float lo_w      = wUseOC ? (close <= op_w ? close : op_w) : low
-
-float weisMVCalc =
-     weisMethod == "ATR"           ? ta.atr(int(math.round(weisMV))) :
-     weisMethod == "Part of Price" ? close / weisMV :
-     weisMV * METHODVALUE_STEP * syminfo.mintick
-
-var float wCurrClose = na
-float wPrevClose = nz(wCurrClose[1])
-wCurrClose := hi_w > wPrevClose + weisMVCalc ? hi_w : lo_w < wPrevClose - weisMVCalc ? lo_w : wPrevClose
-
-var int wDir = na
-wDir := wCurrClose > wPrevClose ? 1 : wCurrClose < wPrevClose ? -1 : nz(wDir[1])
-bool wDirChanged = ta.change(wDir) != 0
-
-string labelSizeVal =
-     weisSize == "Tiny"   ? size.tiny   : weisSize == "Small"  ? size.small  :
-     weisSize == "Medium" ? size.normal : weisSize == "Large"  ? size.large  : size.huge
-
-get_power_text(float val) =>
-    float sc = val / weisSDF
-    float pw = avgVol_w != 0.0 ? sc / avgVol_w : na
-    str.tostring(pw, "#.#")
-
-var float wCumVol = 0.0
-var float[] _wvVols = array.new_float()
-var int[]   _wvDirs = array.new_int()
-
-if wDirChanged
-    if weisNumbers
-        if wDir < 0
-            label.new(bar_index[1], close[1], text=get_power_text(wCumVol[1]), yloc=yloc.abovebar,
-                 style=weisMarkers ? label.style_arrowdown : label.style_none,
-                 textcolor=colorUpWV, color=color.new(color.black,100), size=labelSizeVal)
-        else
-            label.new(bar_index[1], close[1], text=get_power_text(wCumVol[1]), yloc=yloc.belowbar,
-                 style=weisMarkers ? label.style_arrowup : label.style_none,
-                 textcolor=colorDnWV, color=color.new(color.black,100), size=labelSizeVal)
-
-    int _completedDir = wDir < 0 ? 1 : -1
-    if array.size(_wvVols) >= _wvMax
-        array.shift(_wvVols)
-        array.shift(_wvDirs)
-    array.push(_wvVols, wCumVol[1])
-    array.push(_wvDirs, _completedDir)
-    float _bTotal = 0.0, float _sTotal = 0.0
-    for _wi = 0 to array.size(_wvVols) - 1
-        float _wv = array.get(_wvVols, _wi)
-        int   _wd = array.get(_wvDirs, _wi)
-        if _wd > 0
-            _bTotal += _wv
-        else
-            _sTotal += _wv
-    float _tot = _bTotal + _sTotal
-    wCumVol := volW
-else
-    wCumVol := wCumVol + volW
-
-var line  wZZLine = na
-var int   xz1 = bar_index
-var float yz1 = wCurrClose
-xz1 := wDirChanged ? bar_index[1] : xz1
-yz1 := wDirChanged ? wPrevClose   : yz1
-if weisZigZag
-    if not wDirChanged and not na(wZZLine)
-        line.delete(wZZLine)
-    wZZLine := line.new(xz1, yz1, bar_index, wCurrClose, extend=extend.none, color=weisZZCol)
-
-if weisVolCandles
-    if not na(volume) and isUpCandle_w
-        candleColor_w := volFrac_w > 2 ? g_06 : volFrac_w > 1.5 ? g_05 : volFrac_w > 1.2 ? g_04 :
-             volFrac_w > 0.8 ? g_03 : volFrac_w > 0.4 ? g_02 : g_01
-    else if not na(volume)
-        candleColor_w := volFrac_w > 2 ? r_06 : volFrac_w > 1.5 ? r_05 : volFrac_w > 1.2 ? r_04 :
-             volFrac_w > 0.8 ? r_03 : volFrac_w > 0.4 ? r_02 : r_01
-barcolor(weisVolCandles ? candleColor_w : na)
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // O) VOLUME PROFILE
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 int vp_tf_ms = 1000 * timeframe.in_seconds()
@@ -1546,6 +1201,10 @@ alertcondition(scalpShort and not scalpShort[1], "Scalp Short Entry", "SCALP SHO
 alertcondition(momentumFlipUp, "Momentum Flip UP", "5m RSI crossed above 50 on {{ticker}}")
 alertcondition(momentumFlipDn, "Momentum Flip DN", "5m RSI crossed below 50 on {{ticker}}")
 alertcondition(_readyStress, "READY Stress", "READY signal under stress on {{ticker}}")
+// CX 360 v3 alerts
+alertcondition(_weisMomBull and not _weisMomBull[1], "Weis Momentum Bull", "Weis 4H+1H momentum override BULL on {{ticker}}")
+alertcondition(_weisMomBear and not _weisMomBear[1], "Weis Momentum Bear", "Weis 4H+1H momentum override BEAR on {{ticker}}")
+alertcondition(_isLateChase and not _isLateChase[1], "Late Entry Warning", "⚠ LATE ENTRY — DO NOT CHASE on {{ticker}} at {{close}}")
 
 // ── VP: POC / VAH / VAL LINES (clean, no boxes) ──
 var float[] _vpVol = array.new_float(vpBinCount, 0.0)
@@ -1605,12 +1264,15 @@ plot(_vp5m ? vpVAL : na, "VAL", color=color.new(color.rgb(0, 180, 255), 35), lin
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 // ── State Machine ──
-bool _isBuySetup  = buyZoneActive  and (_grade == "A+" or _grade == "A") and syncScore >= 70
-bool _isSellSetup = sellZoneActive and (_grade == "A+" or _grade == "A") and syncScore >= 70
+// CX 360 v3: Late entry blocks TRIGGER when chasing (_lateEntry defined in section F)
+
+bool _isBuySetup  = buyZoneActive  and (_grade == "A+" or _grade == "A") and syncScore >= 70 and not _lateEntry
+bool _isSellSetup = sellZoneActive and (_grade == "A+" or _grade == "A") and syncScore >= 70 and not _lateEntrySell
 bool _isReady     = (buyZoneActive or sellZoneActive) and (_grade == "B" or syncScore < 70)
 bool _isExtended  = (_isBuySetup and rsiMain > 75) or (_isSellSetup and rsiMain < 25)
 
-string _state = _isExtended ? "EXTENDED" :
+string _state = _isLateChase ? "⚠ LATE" :
+     _isExtended ? "EXTENDED" :
      (_isBuySetup or _isSellSetup) ? "TRIGGER" :
      _isReady ? "READY" :
      _sessOff ? "WAIT" :
@@ -1619,6 +1281,7 @@ string _state = _isExtended ? "EXTENDED" :
 color _stateCol = _state == "TRIGGER" ? color.rgb(0,200,100) :
      _state == "READY" ? color.rgb(245,205,70) :
      _state == "EXTENDED" ? color.rgb(255,140,0) :
+     _state == "⚠ LATE" ? color.rgb(255,40,40) :
      _state == "INVALID" ? color.rgb(255,60,60) : color.rgb(120,125,160)
 
 // ── Direction ──
@@ -1682,19 +1345,19 @@ string _quality = na(_rr) ? "—" : _rr >= 3.0 ? "HIGH RR" : _rr >= 2.0 ? "MED R
 color _qualCol = _rr >= 3.0 ? color.rgb(0,200,100) : _rr >= 2.0 ? color.rgb(245,205,70) : color.rgb(255,60,60)
 
 // ── Probability: grade-based + adjustments ──
-int _mixBuy = int(math.round(wbp4h * 0.35 + wbp1h * 0.28 + wbp15m * 0.22 + wbp5m * 0.15))
+// CX 360 v3: reuse _weisMix from CONF section (no duplicate calc)
 int _baseProb = _grade == "A+" ? 85 : _grade == "A" ? 70 : _grade == "B" ? 50 : _grade == "C" ? 30 : 10
-int _probAdj = (syncScore >= 80 ? 5 : syncScore < 50 ? -5 : 0) + (_mixBuy >= 65 or _mixBuy <= 35 ? 5 : _mixBuy >= 45 and _mixBuy <= 55 ? -5 : 0)
+int _probAdj = (syncScore >= 80 ? 5 : syncScore < 50 ? -5 : 0) + (_weisMix >= 65 or _weisMix <= 35 ? 5 : _weisMix >= 45 and _weisMix <= 55 ? -5 : 0)
 int _prob = math.max(5, math.min(95, _baseProb + _probAdj))
 color _probCol = _prob >= 70 ? color.rgb(80,240,130) : _prob >= 50 ? color.rgb(245,205,70) : color.rgb(255,90,90)
 
 // ── Bias direction (always available) ──
-string _biasDir = readyDir == "BUY" ? "▲ BUY" : readyDir == "SELL" ? "▼ SELL" : (_mixBuy >= 55 ? "▲ BUY" : _mixBuy <= 45 ? "▼ SELL" : "— WAIT")
+string _biasDir = readyDir == "BUY" ? "▲ BUY" : readyDir == "SELL" ? "▼ SELL" : (_weisMix >= 55 ? "▲ BUY" : _weisMix <= 45 ? "▼ SELL" : "— WAIT")
 color _biasDirCol = str.contains(_biasDir, "BUY") ? color.rgb(80,240,130) : str.contains(_biasDir, "SELL") ? color.rgb(255,90,90) : color.rgb(150,155,180)
 color _biasBg = str.contains(_biasDir, "BUY") ? color.rgb(0,60,30) : str.contains(_biasDir, "SELL") ? color.rgb(60,0,0) : color.rgb(30,32,50)
 
-// ── Setup Card Table (bottom-right) ──
-var table setupT = table.new(position.bottom_right, 2, 11, border_width=1)
+// ── Setup Card Table (horizontal, top center) ──
+var table setupT = table.new(position.top_center, 12, 2, border_width=1)
 
 if barstate.islast and showSetupCard
     color _cardBg = color.rgb(18, 20, 35)
@@ -1704,46 +1367,40 @@ if barstate.islast and showSetupCard
     color _valTx = color.rgb(220,225,245)
     color _gradeTx = _grade == "A+" ? color.rgb(80,240,130) : _grade == "A" ? color.rgb(80,240,130) : _grade == "B" ? color.rgb(245,205,70) : color.rgb(255,90,90)
 
-    // Row 0: Direction + State (always)
-    table.cell(setupT, 0, 0, _setupActive ? _setupDir + " SETUP" : _biasDir,
-         text_color=_setupActive ? (_isBuySetup ? color.rgb(80,240,130) : color.rgb(255,90,90)) : _biasDirCol, text_size=size.small, bgcolor=_biasBg, text_halign=text.align_left)
-    table.cell(setupT, 1, 0, _state, text_color=_stateCol, text_size=size.small, bgcolor=_biasBg, text_halign=text.align_right)
+    // ── Horizontal Setup Card (top center) ──
+    // Row 0: Headers
+    table.cell(setupT, 0, 0, "BIAS",  text_color=_lblTx, text_size=size.small, bgcolor=color.rgb(28,30,50))
+    table.cell(setupT, 1, 0, "STATE", text_color=_lblTx, text_size=size.small, bgcolor=color.rgb(28,30,50))
+    table.cell(setupT, 2, 0, "PROB",  text_color=_lblTx, text_size=size.small, bgcolor=color.rgb(28,30,50))
+    table.cell(setupT, 3, 0, "GRADE", text_color=_lblTx, text_size=size.small, bgcolor=color.rgb(28,30,50))
+    table.cell(setupT, 4, 0, "CONF",  text_color=_lblTx, text_size=size.small, bgcolor=color.rgb(28,30,50))
+    table.cell(setupT, 5, 0, "ENTRY", text_color=_lblTx, text_size=size.small, bgcolor=color.rgb(28,30,50))
+    table.cell(setupT, 6, 0, "SL",    text_color=_lblTx, text_size=size.small, bgcolor=color.rgb(28,30,50))
+    table.cell(setupT, 7, 0, "TP1",   text_color=_lblTx, text_size=size.small, bgcolor=color.rgb(28,30,50))
+    table.cell(setupT, 8, 0, "TP2",   text_color=_lblTx, text_size=size.small, bgcolor=color.rgb(28,30,50))
+    table.cell(setupT, 9, 0, "TP3",   text_color=_lblTx, text_size=size.small, bgcolor=color.rgb(28,30,50))
+    table.cell(setupT, 10, 0, "R:R",  text_color=_lblTx, text_size=size.small, bgcolor=color.rgb(28,30,50))
+    table.cell(setupT, 11, 0, "QUAL", text_color=_lblTx, text_size=size.small, bgcolor=color.rgb(28,30,50))
 
-    // Row 1: Probability (always)
-    table.cell(setupT, 0, 1, "PROB", text_color=_lblTx, text_size=size.small, bgcolor=_cardBg, text_halign=text.align_left)
-    table.cell(setupT, 1, 1, str.tostring(_prob) + "%", text_color=_probCol, text_size=size.small, bgcolor=_cardBg, text_halign=text.align_right)
-
-    // Row 2: Grade (always)
-    table.cell(setupT, 0, 2, "GRADE", text_color=_lblTx, text_size=size.small, bgcolor=_cardBg, text_halign=text.align_left)
-    table.cell(setupT, 1, 2, _grade, text_color=_gradeTx, text_size=size.small, bgcolor=_cardBg, text_halign=text.align_right)
-
-    // Row 3: Conf (always)
-    table.cell(setupT, 0, 3, "CONF", text_color=_lblTx, text_size=size.small, bgcolor=_cardBg, text_halign=text.align_left)
-    table.cell(setupT, 1, 3, str.tostring(int(syncScore)) + "%", text_color=syncScore >= 70 ? color.rgb(80,240,130) : color.rgb(245,205,70), text_size=size.small, bgcolor=_cardBg, text_halign=text.align_right)
+    // Row 1: Values
+    table.cell(setupT, 0, 1, _setupActive ? _setupDir + " SETUP" : _biasDir,
+         text_color=_setupActive ? (_isBuySetup ? color.rgb(80,240,130) : color.rgb(255,90,90)) : _biasDirCol, text_size=size.normal, bgcolor=_biasBg)
+    table.cell(setupT, 1, 1, _state, text_color=_stateCol, text_size=size.normal, bgcolor=_cardBg)
+    table.cell(setupT, 2, 1, str.tostring(_prob) + "%", text_color=_probCol, text_size=size.normal, bgcolor=_cardBg)
+    table.cell(setupT, 3, 1, _grade, text_color=_gradeTx, text_size=size.normal, bgcolor=_cardBg)
+    table.cell(setupT, 4, 1, str.tostring(int(syncScore)) + "%", text_color=syncScore >= 70 ? color.rgb(80,240,130) : color.rgb(245,205,70), text_size=size.normal, bgcolor=_cardBg)
 
     if _setupActive and not na(_risk) and _risk > 0
-        // Separator
-        table.cell(setupT, 0, 4, "", bgcolor=_cardBdr), table.cell(setupT, 1, 4, "", bgcolor=_cardBdr)
-        // Entry
-        table.cell(setupT, 0, 5, "ENTRY", text_color=_lblTx, text_size=size.small, bgcolor=_cardBg, text_halign=text.align_left)
-        table.cell(setupT, 1, 5, str.tostring(_entry, "#.#"), text_color=_valTx, text_size=size.small, bgcolor=_cardBg, text_halign=text.align_right)
-        // SL
-        table.cell(setupT, 0, 6, "SL", text_color=_lblTx, text_size=size.small, bgcolor=_cardBg, text_halign=text.align_left)
-        table.cell(setupT, 1, 6, str.tostring(_sl, "#.#"), text_color=color.rgb(255,90,90), text_size=size.small, bgcolor=_cardBg, text_halign=text.align_right)
-        // TP1 / TP2 / TP3
-        table.cell(setupT, 0, 7, "TP1", text_color=_lblTx, text_size=size.small, bgcolor=_cardBg, text_halign=text.align_left)
-        table.cell(setupT, 1, 7, str.tostring(_tp1, "#.#"), text_color=color.rgb(80,240,130), text_size=size.small, bgcolor=_cardBg, text_halign=text.align_right)
-        table.cell(setupT, 0, 8, "TP2", text_color=_lblTx, text_size=size.small, bgcolor=_cardBg, text_halign=text.align_left)
-        table.cell(setupT, 1, 8, str.tostring(_tp2, "#.#"), text_color=color.rgb(80,240,130), text_size=size.small, bgcolor=_cardBg, text_halign=text.align_right)
-        table.cell(setupT, 0, 9, "TP3", text_color=_lblTx, text_size=size.small, bgcolor=_cardBg, text_halign=text.align_left)
-        table.cell(setupT, 1, 9, str.tostring(_tp3, "#.#"), text_color=color.rgb(80,240,130), text_size=size.small, bgcolor=_cardBg, text_halign=text.align_right)
-        // R:R + Quality
-        table.cell(setupT, 0, 10, "R:R", text_color=_lblTx, text_size=size.small, bgcolor=_cardBg, text_halign=text.align_left)
-        table.cell(setupT, 1, 10, _rrTxt + " " + _quality, text_color=_qualCol, text_size=size.small, bgcolor=_cardBg, text_halign=text.align_right)
+        table.cell(setupT, 5, 1, str.tostring(_entry, "#.#"), text_color=_valTx, text_size=size.normal, bgcolor=_cardBg)
+        table.cell(setupT, 6, 1, str.tostring(_sl, "#.#"), text_color=color.rgb(255,90,90), text_size=size.normal, bgcolor=_cardBg)
+        table.cell(setupT, 7, 1, str.tostring(_tp1, "#.#"), text_color=color.rgb(245,205,70), text_size=size.normal, bgcolor=_cardBg)
+        table.cell(setupT, 8, 1, str.tostring(_tp2, "#.#"), text_color=color.rgb(80,240,130), text_size=size.normal, bgcolor=_cardBg)
+        table.cell(setupT, 9, 1, str.tostring(_tp3, "#.#"), text_color=color.rgb(0,200,255), text_size=size.normal, bgcolor=_cardBg)
+        table.cell(setupT, 10, 1, _rrTxt, text_color=_qualCol, text_size=size.normal, bgcolor=_cardBg)
+        table.cell(setupT, 11, 1, _quality, text_color=_qualCol, text_size=size.normal, bgcolor=_cardBg)
     else
-        // Clear unused rows when no trigger
-        for i = 4 to 10
-            table.cell(setupT, 0, i, "", bgcolor=_cardBg), table.cell(setupT, 1, i, "", bgcolor=_cardBg)
+        for _ci = 5 to 11
+            table.cell(setupT, _ci, 1, "—", text_color=color.rgb(60,65,90), text_size=size.normal, bgcolor=_cardBg)
 
 // ── Chart Lines for Active Setup ──
 var line _lnEntry = na, var line _lnSL = na
