@@ -273,10 +273,14 @@ int wbp15m = _wpct(_wb15m, _ws15m)
 int wbp1h  = _wpct(_wb1h,  _ws1h)
 int wbp4h  = _wpct(_wb4h,  _ws4h)
 
-// CX 360 v3: Weis momentum override — bypass EMA alignment lag during strong moves
-// Must be after wbp4h/wbp1h (D2) and ema13 (B) are declared
-bool _weisMomBull = wbp4h > 70 and wbp1h > 60 and close > ema13 and adxV > 20
-bool _weisMomBear = wbp4h < 30 and wbp1h < 40 and close < ema13 and adxV > 20
+// CX 360 v4: Weis momentum override — tiered thresholds
+// Tier 1: 4H ultra-strong (>85%) → 1H only needs >45%
+// Tier 2: 4H strong (>70%) → 1H needs >60% (original)
+bool _weisMomBull = (wbp4h > 85 and wbp1h > 45 and close > ema13 and adxV > 20) or (wbp4h > 70 and wbp1h > 60 and close > ema13 and adxV > 20)
+bool _weisMomBear = (wbp4h < 15 and wbp1h < 55 and close < ema13 and adxV > 20) or (wbp4h < 30 and wbp1h < 40 and close < ema13 and adxV > 20)
+// v4: Partial HTF credit when 4H alone is dominant (>80%) even without 1H
+bool _4hDominantBull = wbp4h > 80 and close > ema13 and adxV > 20
+bool _4hDominantBear = wbp4h < 20 and close < ema13 and adxV > 20
 _htfBullEff := _htfBullEff or _weisMomBull
 _htfBearEff := _htfBearEff or _weisMomBear
 // Update HTF bias display with Weis momentum state
@@ -500,6 +504,8 @@ int _weisMix = int(math.round(wbp4h * 0.35 + wbp1h * 0.28 + wbp15m * 0.22 + wbp5
 int _confScore = 0
 if htfBull or htfBear or _weisMomBull or _weisMomBear  // HTF has clear direction (incl Weis override)
     _confScore += 20
+else if _4hDominantBull or _4hDominantBear             // v4: 4H alone dominant → partial credit
+    _confScore += 12
 if adxV > 20                                      // Trend strength confirmed
     _confScore += 15
 if biasAlignScore >= 3                             // MTF RSI bias aligned
@@ -511,8 +517,10 @@ if volRatio > 1.0                                  // Volume above average
 if atSupport or atResistance                       // Price at key level
     _confScore += 15                               // v3: reduced from 20 to make room for Weis
 // CX 360 v3: Weis MTF alignment — strongest directional signal
-bool _weisAlignedBull = _weisMix >= 65 and _htfBullEff
-bool _weisAlignedBear = _weisMix <= 35 and _htfBearEff
+// CX 360 v4: Weis MTF alignment — INDEPENDENT of _htfBullEff (breaks circular dependency)
+// Uses biasAlignScore (MTF RSI bias) instead of readyDir to avoid forward reference
+bool _weisAlignedBull = _weisMix >= 65 and (biasAlignScore >= 3 or _htfBullEff or _4hDominantBull)
+bool _weisAlignedBear = _weisMix <= 35 and (biasAlignScore <= 1 or _htfBearEff or _4hDominantBear)
 if _weisAlignedBull or _weisAlignedBear
     _confScore += 15
 
@@ -702,9 +710,9 @@ bool breakoutDn =
      close < nearSupport - atrV * 0.5
 
 color zoneBuyColor  = color.new(color.rgb(0, 200, 100), zone_transp)
-color zoneSellColor = color.new(color.rgb(220, 50, 50), zone_transp)
+color zoneSellColor = color.new(color.rgb(180, 80, 80), 95)  // v4: softer red, more transparent
 color zoneBg = buyZoneActive ? zoneBuyColor : sellZoneActive ? zoneSellColor : na
-bgcolor(zoneBg)
+// bgcolor(zoneBg)  // v5: removed — user preference
 
 float candleRange  = high - low
 bool  hasExpansion = candleRange >= atrV * atr_expand_pct
@@ -734,11 +742,11 @@ bool iIBBreakDn     = pattQualitySell and isInsideBar[1] and close < low[1]
 bool bullPattern = isHammer or isBullEngulf or isBullPin or iIBBreakUp
 bool bearPattern = isShootingStar or isBearEngulf or iBearPin or iIBBreakDn
 
-plotshape(show_candle_patt and bullPattern, title="Bull Pattern",
+plotshape(false, title="Bull Pattern",
      style=shape.diamond, location=location.belowbar,
      color=color.new(color.rgb(0,255,150), 0), size=size.small,
      text="◆", textcolor=color.rgb(0,255,150), display=display.pane)
-plotshape(show_candle_patt and bearPattern, title="Bear Pattern",
+plotshape(false, title="Bear Pattern",
      style=shape.diamond, location=location.abovebar,
      color=color.new(color.rgb(255,80,80), 0), size=size.small,
      text="◆", textcolor=color.rgb(255,80,80), display=display.pane)
@@ -774,11 +782,11 @@ if barstate.islast and show_sl_ref
 plotshape(showScalpSig and scalpLong and not scalpLong[1], title="Scalp Long",
      style=shape.triangleup, location=location.belowbar,
      color=color.new(color.rgb(0,230,118), 0), size=size.tiny,
-     text="SL↑", textcolor=color.rgb(0,230,118))
+     text="SL↑", textcolor=color.rgb(0,230,118), display=display.pane)
 plotshape(showScalpSig and scalpShort and not scalpShort[1], title="Scalp Short",
      style=shape.triangledown, location=location.abovebar,
      color=color.new(color.rgb(255,82,82), 0), size=size.tiny,
-     text="SS↓", textcolor=color.rgb(255,82,82))
+     text="SS↓", textcolor=color.rgb(255,82,82), display=display.pane)
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // H3) MICRO LIQUIDITY SWEEP ENGINE
@@ -827,29 +835,63 @@ bool _lqSellCounter = _lqBuySide  and not _htfBearEff
 bool _lqBuyTrend    = _lqSellSide and _htfBullEff
 bool _lqBuyCounter  = _lqSellSide and not _htfBullEff
 
-plotshape(_lqSellTrend, title="LQ Sell (trend)",
+// v4: LQ flag plots removed — SWEPT line + label is sufficient
+plotshape(false, title="LQ Sell (trend)",
      style=shape.flag, location=location.abovebar,
      color=color.rgb(255,40,40), text="LQ SELL", textcolor=color.white, size=size.small)
-plotshape(_lqSellCounter, title="LQ Sell (counter)",
+plotshape(false, title="LQ Sell (counter)",
      style=shape.flag, location=location.abovebar,
      color=color.rgb(180,120,40), text="LQ SELL ⚠", textcolor=color.white, size=size.small)
-plotshape(_lqBuyTrend, title="LQ Buy (trend)",
+plotshape(false, title="LQ Buy (trend)",
      style=shape.flag, location=location.belowbar,
      color=color.rgb(0,220,120), text="LQ BUY", textcolor=color.white, size=size.small)
-plotshape(_lqBuyCounter, title="LQ Buy (counter)",
+plotshape(false, title="LQ Buy (counter)",
      style=shape.flag, location=location.belowbar,
      color=color.rgb(180,120,40), text="LQ BUY ⚠", textcolor=color.white, size=size.small)
 
-// ICM 1.4: LQ sweep level line + highlight
+// v5: SWEPT persistent zones — lines extend until price retests the level
+var float _sweptBuyLevel  = na   // sell-side swept (support) level
+var float _sweptSellLevel = na   // buy-side swept (resistance) level
+var line  _sweptBuyLine   = na
+var line  _sweptSellLine  = na
+var label _sweptBuyLbl    = na
+var label _sweptSellLbl   = na
+
 if _lqBuySide
-    _lqLine = line.new(bar_index, high, bar_index + 20, high, color=color.new(color.rgb(255,40,40), 40), width=1, style=line.style_dashed)
-    _lqLbl  = label.new(bar_index + 10, high, "⚡ SWEPT " + str.tostring(high, "#.2"), style=label.style_none, textcolor=color.rgb(255,100,100), size=size.small)
+    // New buy-side sweep: update persistent level
+    if not na(_sweptBuyLine)
+        line.delete(_sweptBuyLine)
+    if not na(_sweptBuyLbl)
+        label.delete(_sweptBuyLbl)
+    _sweptBuyLevel := high
+    _sweptBuyLine  := line.new(bar_index, high, bar_index + 200, high, color=color.new(color.rgb(255,80,80), 30), width=2, style=line.style_dashed, extend=extend.right)
+    _sweptBuyLbl   := label.new(bar_index, high, "⚡ SWEPT " + str.tostring(high, "#.#"), style=label.style_none, textcolor=color.rgb(255,100,100), size=size.small)
+
 if _lqSellSide
-    _lqLine = line.new(bar_index, low, bar_index + 20, low, color=color.new(color.rgb(0,220,120), 40), width=1, style=line.style_dashed)
-    _lqLbl  = label.new(bar_index + 10, low, "⚡ SWEPT " + str.tostring(low, "#.2"), style=label.style_none, textcolor=color.rgb(0,220,120), size=size.small)
+    if not na(_sweptSellLine)
+        line.delete(_sweptSellLine)
+    if not na(_sweptSellLbl)
+        label.delete(_sweptSellLbl)
+    _sweptSellLevel := low
+    _sweptSellLine  := line.new(bar_index, low, bar_index + 200, low, color=color.new(color.rgb(0,220,120), 30), width=2, style=line.style_dashed, extend=extend.right)
+    _sweptSellLbl   := label.new(bar_index, low, "⚡ SWEPT " + str.tostring(low, "#.#"), style=label.style_none, textcolor=color.rgb(0,220,120), size=size.small)
+
+// Clear swept level when price retests it (level served its purpose)
+if not na(_sweptBuyLevel) and close > _sweptBuyLevel + atrV * 0.3
+    if not na(_sweptBuyLine)
+        line.delete(_sweptBuyLine)
+    if not na(_sweptBuyLbl)
+        label.delete(_sweptBuyLbl)
+    _sweptBuyLevel := na
+if not na(_sweptSellLevel) and close < _sweptSellLevel - atrV * 0.3
+    if not na(_sweptSellLine)
+        line.delete(_sweptSellLine)
+    if not na(_sweptSellLbl)
+        label.delete(_sweptSellLbl)
+    _sweptSellLevel := na
 
 // LQ sweep background flash
-bgcolor(_lqBuySide ? color.new(color.rgb(255,40,40), 88) : _lqSellSide ? color.new(color.rgb(0,220,120), 88) : na, title="LQ Sweep BG")
+// bgcolor LQ Sweep — v5: removed
 
 // ── RSI DIVERGENCE ──
 float _divRsi = ta.rsi(close, 14)
@@ -903,7 +945,13 @@ color bgFinal =
      isAvoid    ? color.new(C_AVOID,   95) :
      showBands and canTrade and volaLvl >= 2 ? color.new(bandColor, transpBand) : na
 
-bgcolor(show_bg and na(zoneBg) ? bgFinal : na)
+// bgcolor(show_bg and na(zoneBg) ? bgFinal : na)  // v5: removed — user preference
+
+// ── v5: EMA 13/34/200 + VWAP plots (single-board mode) ──
+plot(ema13,   title="EMA 13",  color=color.new(color.rgb(0, 255, 180), 0),  linewidth=1, display=display.pane)
+plot(ema34,   title="EMA 34",  color=color.new(color.rgb(180, 120, 255), 0), linewidth=1, display=display.pane)
+plot(bar_index % 2 == 0 ? ema200m : na, title="EMA 200", color=color.new(color.white, 40), linewidth=1, style=plot.style_linebr, display=display.pane)
+plot(vwapLine, title="VWAP",   color=color.new(color.rgb(255, 200, 50), 20), linewidth=1, style=plot.style_stepline, display=display.pane)
 
 var line  htfDN_line = na
 var label htfDN_lbl  = na
@@ -1255,7 +1303,7 @@ float vpVAH = nz(_vpLo) + (_vpUp + 1) * _vpStep
 float vpVAL = nz(_vpLo) + _vpDn * _vpStep
 
 bool _vp5m = showVP and _hasVP and tf_secs == 300
-plot(_vp5m ? vpPOC : na, "POC", color=color.new(color.rgb(255, 200, 50), 20), linewidth=2, style=plot.style_stepline, display=display.pane)
+plot(_vp5m ? vpPOC : na, "POC", color=color.new(color.rgb(255, 100, 50), 20), linewidth=2, style=plot.style_stepline, display=display.pane)
 plot(_vp5m ? vpVAH : na, "VAH", color=color.new(color.rgb(0, 180, 255), 35), linewidth=1, style=plot.style_stepline, display=display.pane)
 plot(_vp5m ? vpVAL : na, "VAL", color=color.new(color.rgb(0, 180, 255), 35), linewidth=1, style=plot.style_stepline, display=display.pane)
 
@@ -1263,71 +1311,127 @@ plot(_vp5m ? vpVAL : na, "VAL", color=color.new(color.rgb(0, 180, 255), 35), lin
 // SETUP CARD — Execution Panel (Entry / SL / TP1-3 / RR / State)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+// ── CX 360 v3: LQ Sweep → Setup Card trigger path ──
+// LQ trend-aligned + min CONF + ADX trending = valid execution trigger
+bool _lqBuyFire  = _lqBuyTrend  and syncScore >= 50 and adxV > 22 and not _lateEntry
+bool _lqSellFire = _lqSellTrend and syncScore >= 50 and adxV > 22 and not _lateEntrySell
+
+// Persist LQ trigger for 3 bars (user needs time to see Entry/SL/TP)
+var bool  _lqBuyActive   = false
+var bool  _lqSellActive  = false
+var int   _lqTriggerBar  = 0
+var float _lqSLBuy       = na    // swept low = SL for buy
+var float _lqSLSell      = na    // swept high = SL for sell
+
+if _lqBuyFire
+    _lqBuyActive  := true
+    _lqSellActive := false
+    _lqTriggerBar := bar_index
+    _lqSLBuy      := low         // candle low that swept sell-side liquidity
+if _lqSellFire
+    _lqSellActive := true
+    _lqBuyActive  := false
+    _lqTriggerBar := bar_index
+    _lqSLSell     := high        // candle high that swept buy-side liquidity
+
+// Expire after 8 bars (v4: was 3, too short for setup card visibility)
+if bar_index - _lqTriggerBar > 8
+    _lqBuyActive  := false
+    _lqSellActive := false
+
 // ── State Machine ──
 // CX 360 v3: Late entry blocks TRIGGER when chasing (_lateEntry defined in section F)
+// Two trigger paths: Zone (original) + LQ Sweep (new)
 
-bool _isBuySetup  = buyZoneActive  and (_grade == "A+" or _grade == "A") and syncScore >= 70 and not _lateEntry
-bool _isSellSetup = sellZoneActive and (_grade == "A+" or _grade == "A") and syncScore >= 70 and not _lateEntrySell
-bool _isReady     = (buyZoneActive or sellZoneActive) and (_grade == "B" or syncScore < 70)
-bool _isExtended  = (_isBuySetup and rsiMain > 75) or (_isSellSetup and rsiMain < 25)
+// v4: Re-entry cooldown — prevents rapid re-trigger after state drops
+var int   _lastTrigEndBar  = 0
+var float _lastTrigPrice   = na
+var bool  _wasTrigger      = false
+bool _triggerNow = (buyZoneActive and (_grade == "A+" or _grade == "A") and syncScore >= 70) or (sellZoneActive and (_grade == "A+" or _grade == "A") and syncScore >= 70) or _lqBuyActive or _lqSellActive
+if _wasTrigger and not _triggerNow
+    _lastTrigEndBar := bar_index
+    _lastTrigPrice  := close
+_wasTrigger := _triggerNow
+// v5: Smart cooldown — reset if price moved 2×ATR from last trigger (fresh level)
+bool _priceMoved = not na(_lastTrigPrice) and math.abs(close - _lastTrigPrice) > atrV * 2
+bool _reEntryCooldown = bar_index - _lastTrigEndBar <= 5 and _lastTrigEndBar > 0 and not _priceMoved
 
-string _state = _isLateChase ? "⚠ LATE" :
-     _isExtended ? "EXTENDED" :
-     (_isBuySetup or _isSellSetup) ? "TRIGGER" :
-     _isReady ? "READY" :
-     _sessOff ? "WAIT" :
-     (_grade == "C" or _grade == "AVOID") ? "INVALID" : "WAIT"
+// ── v5 State Machine: GO / OKAY / RISKY / AVOID ──
+// Always-on: shows Entry/SL/TP when Grade ≥ B and CONF ≥ 50%
+bool _isGo    = ((_grade == "A+" or _grade == "A") and syncScore >= 70 and not _isLateChase and not _reEntryCooldown) or _lqBuyActive or _lqSellActive
+bool _isOkay  = not _isGo and (_grade == "A+" or _grade == "A" or _grade == "B") and syncScore >= 50 and not _isLateChase
+bool _isRisky = not _isGo and not _isOkay and (_grade == "B" or _grade == "C") and syncScore >= 35
+bool _isAvoid = not _isGo and not _isOkay and not _isRisky
 
-color _stateCol = _state == "TRIGGER" ? color.rgb(0,200,100) :
-     _state == "READY" ? color.rgb(245,205,70) :
-     _state == "EXTENDED" ? color.rgb(255,140,0) :
-     _state == "⚠ LATE" ? color.rgb(255,40,40) :
-     _state == "INVALID" ? color.rgb(255,60,60) : color.rgb(120,125,160)
+// ── v5.1: Direction from weighted consensus, not single-factor OR ──
+int _dirScore = 0
+_dirScore += _weisMix >= 60 ? 2 : _weisMix >= 55 ? 1 : _weisMix <= 40 ? -2 : _weisMix <= 45 ? -1 : 0
+_dirScore += biasAlignScore >= 3 ? 1 : biasAlignScore <= 1 ? -1 : 0
+_dirScore += _htfBullEff ? 1 : _htfBearEff ? -1 : 0
+_dirScore += close > ema13 ? 1 : close < ema13 ? -1 : 0
+bool _isBuyDir  = _dirScore >= 2
+bool _isSellDir = _dirScore <= -2
 
-// ── Direction ──
-bool _setupActive = (_isBuySetup or _isSellSetup) and not _isExtended
-string _setupDir  = _isBuySetup ? "▲ BUY" : _isSellSetup ? "▼ SELL" : "—"
+// Extended check
+bool _isExtended = _isGo and ((rsiMain > 75 and _isBuyDir) or (rsiMain < 25 and _isSellDir))
 
-// ── SL: tighter of structure vs ATR ──
+// Track LQ trigger path
+bool _isLqTrigger = _lqBuyActive or _lqSellActive
+
+string _state = _isLateChase ? "⚠ LATE" : _isExtended ? "EXTENDED" : _isGo ? (_isLqTrigger ? "LQ GO" : "GO") : _isOkay ? "OKAY" : _isRisky ? "RISKY" : _sessOff ? "WAIT" : "AVOID"
+
+color _stateCol = _state == "GO" ? color.rgb(0,200,100) : _state == "LQ GO" ? color.rgb(0,200,255) : _state == "OKAY" ? color.rgb(245,205,70) : _state == "RISKY" ? color.rgb(255,140,0) : _state == "EXTENDED" ? color.rgb(255,140,0) : _state == "⚠ LATE" ? color.rgb(255,40,40) : _state == "AVOID" ? color.rgb(255,60,60) : color.rgb(120,125,160)
+
+// ── v5: Always-on execution data when Grade ≥ B and CONF ≥ 50% ──
+bool _showExec = (_isGo or _isOkay) and not _isExtended
+string _setupDir = _isBuyDir ? "▲ BUY" : _isSellDir ? "▼ SELL" : "—"
+
+// ── SL: structure + ATR + v5 EMA13 floor in trends ──
 float _swingLo10 = ta.lowest(low, 10)
 float _swingHi10 = ta.highest(high, 10)
 float _atrStop   = atrV * 1.5
 
-float _slBuy  = math.max(_swingLo10, close - _atrStop)
-float _slSell = math.min(_swingHi10, close + _atrStop)
+float _slBuy  = _lqBuyActive ? _lqSLBuy : math.min(math.max(_swingLo10, close - _atrStop), close - atrV * 0.8)
+float _slSell = _lqSellActive ? _lqSLSell : math.max(math.min(_swingHi10, close + _atrStop), close + atrV * 0.8)
+
+// v5: In trends, SL below EMA13 (support), not at it
+if _htfBullEff and adxV > 25 and _isBuyDir and _slBuy > ema13 - atrV * 0.3
+    _slBuy := ema13 - atrV * 0.3
+if _htfBearEff and adxV > 25 and _isSellDir and _slSell < ema13 + atrV * 0.3
+    _slSell := ema13 + atrV * 0.3
 
 float _entry = close
-float _sl    = _isBuySetup ? _slBuy : _isSellSetup ? _slSell : na
-float _risk  = _setupActive and not na(_sl) ? math.abs(_entry - _sl) : na
+float _sl    = _isBuyDir ? _slBuy : _isSellDir ? _slSell : na
+float _risk  = _showExec and not na(_sl) ? math.abs(_entry - _sl) : na
 
 // ── TP: structure-based with R fallback ──
 float _tp1 = na, float _tp2 = na, float _tp3 = na
 
-if _setupActive and not na(_risk) and _risk > 0
-    _tp1 := _isBuySetup ? _entry + _risk : _entry - _risk
+if _showExec and not na(_risk) and _risk > 0
+    _tp1 := _isBuyDir ? _entry + _risk : _entry - _risk
 
     // Collect structure levels for TP2/TP3
     var array<float> _tgt = array.new_float()
     array.clear(_tgt)
 
-    float _lo = _isBuySetup ? _entry + _risk * 0.8 : _entry - _risk * 4.0
-    float _hi = _isBuySetup ? _entry + _risk * 4.0 : _entry - _risk * 0.8
+    float _lo = _isBuyDir ? _entry + _risk * 0.8 : _entry - _risk * 4.0
+    float _hi = _isBuyDir ? _entry + _risk * 4.0 : _entry - _risk * 0.8
 
     // Add structural levels in valid range
     for _lvl in array.from(dHighPrev, dLowPrev, P, R1, S1, R2, S2, dHighCurr, dLowCurr)
         if not na(_lvl) and _lvl > math.min(_lo, _hi) and _lvl < math.max(_lo, _hi)
             array.push(_tgt, _lvl)
 
-    if _isBuySetup
+    if _isBuyDir
         array.sort(_tgt, order.ascending)
     else
         array.sort(_tgt, order.descending)
 
-    _tp2 := array.size(_tgt) >= 1 ? array.get(_tgt, 0) : (_isBuySetup ? _entry + _risk * 2.0 : _entry - _risk * 2.0)
-    _tp3 := array.size(_tgt) >= 2 ? array.get(_tgt, 1) : (_isBuySetup ? _entry + _risk * 3.0 : _entry - _risk * 3.0)
+    _tp2 := array.size(_tgt) >= 1 ? array.get(_tgt, 0) : (_isBuyDir ? _entry + _risk * 2.0 : _entry - _risk * 2.0)
+    _tp3 := array.size(_tgt) >= 2 ? array.get(_tgt, 1) : (_isBuyDir ? _entry + _risk * 3.0 : _entry - _risk * 3.0)
 
     // Ensure TP ordering
-    if _isBuySetup
+    if _isBuyDir
         if _tp2 < _tp1
             _tp2 := _entry + _risk * 2.0
         if _tp3 < _tp2
@@ -1361,8 +1465,8 @@ var table setupT = table.new(position.top_center, 12, 2, border_width=1)
 
 if barstate.islast and showSetupCard
     color _cardBg = color.rgb(18, 20, 35)
-    color _cardBdr = _setupActive ? (_isBuySetup ? color.rgb(0,200,100) : color.rgb(255,60,60)) :
-         _state == "READY" ? color.rgb(245,205,70) : color.rgb(50,55,80)
+    color _cardBdr = _isGo ? (_isBuyDir ? color.rgb(0,200,100) : color.rgb(255,60,60)) :
+         _isOkay ? color.rgb(245,205,70) : color.rgb(50,55,80)
     color _lblTx = color.rgb(120,125,160)
     color _valTx = color.rgb(220,225,245)
     color _gradeTx = _grade == "A+" ? color.rgb(80,240,130) : _grade == "A" ? color.rgb(80,240,130) : _grade == "B" ? color.rgb(245,205,70) : color.rgb(255,90,90)
@@ -1382,20 +1486,21 @@ if barstate.islast and showSetupCard
     table.cell(setupT, 10, 0, "R:R",  text_color=_lblTx, text_size=size.small, bgcolor=color.rgb(28,30,50))
     table.cell(setupT, 11, 0, "QUAL", text_color=_lblTx, text_size=size.small, bgcolor=color.rgb(28,30,50))
 
-    // Row 1: Values
-    table.cell(setupT, 0, 1, _setupActive ? _setupDir + " SETUP" : _biasDir,
-         text_color=_setupActive ? (_isBuySetup ? color.rgb(80,240,130) : color.rgb(255,90,90)) : _biasDirCol, text_size=size.normal, bgcolor=_biasBg)
+    // Row 1: Values — v5: always show direction
+    table.cell(setupT, 0, 1, _showExec ? _setupDir + " SETUP" : _biasDir,
+         text_color=_showExec ? (_isBuyDir ? color.rgb(80,240,130) : color.rgb(255,90,90)) : _biasDirCol, text_size=size.normal, bgcolor=_biasBg)
     table.cell(setupT, 1, 1, _state, text_color=_stateCol, text_size=size.normal, bgcolor=_cardBg)
     table.cell(setupT, 2, 1, str.tostring(_prob) + "%", text_color=_probCol, text_size=size.normal, bgcolor=_cardBg)
     table.cell(setupT, 3, 1, _grade, text_color=_gradeTx, text_size=size.normal, bgcolor=_cardBg)
     table.cell(setupT, 4, 1, str.tostring(int(syncScore)) + "%", text_color=syncScore >= 70 ? color.rgb(80,240,130) : color.rgb(245,205,70), text_size=size.normal, bgcolor=_cardBg)
 
-    if _setupActive and not na(_risk) and _risk > 0
+    // v5: Show Entry/SL/TP for both GO and OKAY (always-on when tradeable)
+    if _showExec and not na(_risk) and _risk > 0
         table.cell(setupT, 5, 1, str.tostring(_entry, "#.#"), text_color=_valTx, text_size=size.normal, bgcolor=_cardBg)
         table.cell(setupT, 6, 1, str.tostring(_sl, "#.#"), text_color=color.rgb(255,90,90), text_size=size.normal, bgcolor=_cardBg)
-        table.cell(setupT, 7, 1, str.tostring(_tp1, "#.#"), text_color=color.rgb(245,205,70), text_size=size.normal, bgcolor=_cardBg)
-        table.cell(setupT, 8, 1, str.tostring(_tp2, "#.#"), text_color=color.rgb(80,240,130), text_size=size.normal, bgcolor=_cardBg)
-        table.cell(setupT, 9, 1, str.tostring(_tp3, "#.#"), text_color=color.rgb(0,200,255), text_size=size.normal, bgcolor=_cardBg)
+        table.cell(setupT, 7, 1, str.tostring(_tp1, "#.#"), text_color=color.rgb(0,255,100), text_size=size.normal, bgcolor=_cardBg)
+        table.cell(setupT, 8, 1, str.tostring(_tp2, "#.#"), text_color=color.rgb(0,255,100), text_size=size.normal, bgcolor=_cardBg)
+        table.cell(setupT, 9, 1, str.tostring(_tp3, "#.#"), text_color=color.rgb(0,255,100), text_size=size.normal, bgcolor=_cardBg)
         table.cell(setupT, 10, 1, _rrTxt, text_color=_qualCol, text_size=size.normal, bgcolor=_cardBg)
         table.cell(setupT, 11, 1, _quality, text_color=_qualCol, text_size=size.normal, bgcolor=_cardBg)
     else
@@ -1412,15 +1517,19 @@ if barstate.islast and showSetupCard
     f_del_line(_lnEntry), f_del_line(_lnSL), f_del_line(_lnTP1), f_del_line(_lnTP2), f_del_line(_lnTP3)
     f_del_label(_labEntry), f_del_label(_labSL), f_del_label(_labTP1), f_del_label(_labTP2), f_del_label(_labTP3)
 
-    if _setupActive and not na(_risk) and _risk > 0
+    if _showExec and not na(_risk) and _risk > 0
         int _x0 = bar_index - 3, int _x1 = bar_index + 10, int _xl = bar_index + 11
-        _lnEntry := line.new(_x0, _entry, _x1, _entry, color=color.rgb(220,225,245,30), width=1, style=line.style_dashed)
-        _lnSL    := line.new(_x0, _sl,    _x1, _sl,    color=color.rgb(255,60,60,30), width=2, style=line.style_dashed)
-        _lnTP1   := line.new(_x0, _tp1,   _x1, _tp1,   color=color.rgb(245,205,70,30), width=1, style=line.style_dashed)
-        _lnTP2   := line.new(_x0, _tp2,   _x1, _tp2,   color=color.rgb(80,240,130,30), width=1, style=line.style_dashed)
-        _lnTP3   := line.new(_x0, _tp3,   _x1, _tp3,   color=color.rgb(0,200,255,30), width=1, style=line.style_dashed)
-        _labEntry := label.new(_xl, _entry, "ENTRY " + str.tostring(_entry, "#.#"), style=label.style_label_left, textcolor=color.rgb(220,225,245), color=color.rgb(40,42,60,60), size=size.tiny)
-        _labSL    := label.new(_xl, _sl,    "SL " + str.tostring(_sl, "#.#"), style=label.style_label_left, textcolor=color.rgb(255,90,90), color=color.rgb(60,0,0,60), size=size.tiny)
-        _labTP1   := label.new(_xl, _tp1,   "TP1 " + str.tostring(_tp1, "#.#"), style=label.style_label_left, textcolor=color.rgb(245,205,70), color=color.rgb(50,40,0,60), size=size.tiny)
-        _labTP2   := label.new(_xl, _tp2,   "TP2 " + str.tostring(_tp2, "#.#"), style=label.style_label_left, textcolor=color.rgb(80,240,130), color=color.rgb(0,40,15,60), size=size.tiny)
-        _labTP3   := label.new(_xl, _tp3,   "TP3 " + str.tostring(_tp3, "#.#"), style=label.style_label_left, textcolor=color.rgb(0,200,255), color=color.rgb(0,20,50,60), size=size.tiny)
+        _lnEntry := line.new(_x0, _entry, _x1, _entry, color=color.rgb(255,255,255,0), width=2, style=line.style_dotted)
+        _lnSL    := line.new(_x0, _sl,    _x1, _sl,    color=color.rgb(255,50,50,0), width=2, style=line.style_solid)
+        _lnTP1   := line.new(_x0, _tp1,   _x1, _tp1,   color=color.rgb(0,255,100,0), width=1, style=line.style_dashed)
+        _lnTP2   := line.new(_x0, _tp2,   _x1, _tp2,   color=color.rgb(0,255,100,0), width=1, style=line.style_dashed)
+        _lnTP3   := line.new(_x0, _tp3,   _x1, _tp3,   color=color.rgb(0,255,100,0), width=1, style=line.style_dashed)
+        _labEntry := label.new(_xl, _entry, "● ENTRY " + str.tostring(_entry, "#.#"), style=label.style_label_left, textcolor=color.rgb(255,255,255), color=color.rgb(40,42,60,40), size=size.tiny)
+        _labSL    := label.new(_xl, _sl,    "✕ SL " + str.tostring(_sl, "#.#"), style=label.style_label_left, textcolor=color.rgb(255,50,50), color=color.rgb(60,0,0,40), size=size.tiny)
+        _labTP1   := label.new(_xl, _tp1,   "◎ TP1 " + str.tostring(_tp1, "#.#"), style=label.style_label_left, textcolor=color.rgb(0,255,100), color=color.rgb(0,40,15,40), size=size.tiny)
+        _labTP2   := label.new(_xl, _tp2,   "◎ TP2 " + str.tostring(_tp2, "#.#"), style=label.style_label_left, textcolor=color.rgb(0,255,100), color=color.rgb(0,40,15,40), size=size.tiny)
+        _labTP3   := label.new(_xl, _tp3,   "◎ TP3 " + str.tostring(_tp3, "#.#"), style=label.style_label_left, textcolor=color.rgb(0,255,100), color=color.rgb(0,40,15,40), size=size.tiny)
+
+// CX 360 v3: LQ trigger alerts (must be after _lqBuyFire declaration)
+alertcondition(_lqBuyFire,  "LQ Buy Trigger",  "🎯 LQ BUY TRIGGER on {{ticker}} at {{close}} — swept level SL")
+alertcondition(_lqSellFire, "LQ Sell Trigger", "🎯 LQ SELL TRIGGER on {{ticker}} at {{close}} — swept level SL")
