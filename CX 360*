@@ -1369,8 +1369,17 @@ _dirScore += _weisMix >= 60 ? 2 : _weisMix >= 55 ? 1 : _weisMix <= 40 ? -2 : _we
 _dirScore += biasAlignScore >= 3 ? 1 : biasAlignScore <= 1 ? -1 : 0
 _dirScore += _htfBullEff ? 1 : _htfBearEff ? -1 : 0
 _dirScore += close > ema13 ? 1 : close < ema13 ? -1 : 0
-bool _isBuyDir  = _dirScore >= 2
-bool _isSellDir = _dirScore <= -2
+_dirScore += close > vwapLine ? 1 : close < vwapLine ? -1 : 0  // v5.2: VWAP tiebreaker
+// v5.2: Tiered direction — GO needs strong consensus, OKAY accepts mild
+bool _isBuyStrong  = _dirScore >= 2
+bool _isSellStrong = _dirScore <= -2
+bool _isBuyMild    = _dirScore >= 1
+bool _isSellMild   = _dirScore <= -1
+// Will be resolved after state is determined
+
+// v5.2: Resolve direction based on state — GO needs strong, OKAY accepts mild
+bool _isBuyDir  = _isGo ? _isBuyStrong  : (_isOkay or _isRisky) ? _isBuyMild  : _isBuyStrong
+bool _isSellDir = _isGo ? _isSellStrong : (_isOkay or _isRisky) ? _isSellMild : _isSellStrong
 
 // Extended check
 bool _isExtended = _isGo and ((rsiMain > 75 and _isBuyDir) or (rsiMain < 25 and _isSellDir))
@@ -1518,17 +1527,17 @@ if barstate.islast and showSetupCard
     f_del_label(_labEntry), f_del_label(_labSL), f_del_label(_labTP1), f_del_label(_labTP2), f_del_label(_labTP3)
 
     if _showExec and not na(_risk) and _risk > 0
-        int _x0 = bar_index - 3, int _x1 = bar_index + 10, int _xl = bar_index + 11
+        int _x0 = bar_index - 3, int _x1 = bar_index + 15, int _xl = bar_index + 16
         _lnEntry := line.new(_x0, _entry, _x1, _entry, color=color.rgb(255,255,255,0), width=2, style=line.style_dotted)
         _lnSL    := line.new(_x0, _sl,    _x1, _sl,    color=color.rgb(255,50,50,0), width=2, style=line.style_solid)
         _lnTP1   := line.new(_x0, _tp1,   _x1, _tp1,   color=color.rgb(0,255,100,0), width=1, style=line.style_dashed)
         _lnTP2   := line.new(_x0, _tp2,   _x1, _tp2,   color=color.rgb(0,255,100,0), width=1, style=line.style_dashed)
         _lnTP3   := line.new(_x0, _tp3,   _x1, _tp3,   color=color.rgb(0,255,100,0), width=1, style=line.style_dashed)
-        _labEntry := label.new(_xl, _entry, "● ENTRY " + str.tostring(_entry, "#.#"), style=label.style_label_left, textcolor=color.rgb(255,255,255), color=color.rgb(40,42,60,40), size=size.tiny)
-        _labSL    := label.new(_xl, _sl,    "✕ SL " + str.tostring(_sl, "#.#"), style=label.style_label_left, textcolor=color.rgb(255,50,50), color=color.rgb(60,0,0,40), size=size.tiny)
-        _labTP1   := label.new(_xl, _tp1,   "◎ TP1 " + str.tostring(_tp1, "#.#"), style=label.style_label_left, textcolor=color.rgb(0,255,100), color=color.rgb(0,40,15,40), size=size.tiny)
-        _labTP2   := label.new(_xl, _tp2,   "◎ TP2 " + str.tostring(_tp2, "#.#"), style=label.style_label_left, textcolor=color.rgb(0,255,100), color=color.rgb(0,40,15,40), size=size.tiny)
-        _labTP3   := label.new(_xl, _tp3,   "◎ TP3 " + str.tostring(_tp3, "#.#"), style=label.style_label_left, textcolor=color.rgb(0,255,100), color=color.rgb(0,40,15,40), size=size.tiny)
+        _labEntry := label.new(_xl, _entry, "● ENTRY " + str.tostring(_entry, "#.#"), style=label.style_label_left, textcolor=color.rgb(255,255,255), color=color.rgb(40,42,60,40), size=size.small)
+        _labSL    := label.new(_xl, _sl,    "✕ SL " + str.tostring(_sl, "#.#"), style=label.style_label_left, textcolor=color.rgb(255,50,50), color=color.rgb(60,0,0,40), size=size.small)
+        _labTP1   := label.new(_xl, _tp1,   "◎ TP1 " + str.tostring(_tp1, "#.#"), style=label.style_label_left, textcolor=color.rgb(0,255,100), color=color.rgb(0,40,15,40), size=size.small)
+        _labTP2   := label.new(_xl, _tp2,   "◎ TP2 " + str.tostring(_tp2, "#.#"), style=label.style_label_left, textcolor=color.rgb(0,255,100), color=color.rgb(0,40,15,40), size=size.small)
+        _labTP3   := label.new(_xl, _tp3,   "◎ TP3 " + str.tostring(_tp3, "#.#"), style=label.style_label_left, textcolor=color.rgb(0,255,100), color=color.rgb(0,40,15,40), size=size.small)
 
 // CX 360 v3: LQ trigger alerts (must be after _lqBuyFire declaration)
 alertcondition(_lqBuyFire,  "LQ Buy Trigger",  "🎯 LQ BUY TRIGGER on {{ticker}} at {{close}} — swept level SL")
